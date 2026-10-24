@@ -1,0 +1,740 @@
+{
+ "name": "Twisted Breaks",
+ "params": [
+  {
+   "key": "kit",
+   "name": "Kit",
+   "min": 0,
+   "max": 99,
+   "default": 0,
+   "display": "int",
+   "dynamic_display": true,
+   "refresh_display": true
+  },
+  {
+   "key": "kit_load",
+   "name": "Load Kit",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "status",
+   "name": "Status",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "master_gain",
+   "name": "Level",
+   "min": -60,
+   "max": 6,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "master_limiter",
+   "name": "Limiter",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
+  },
+  {
+   "key": "scene_view",
+   "name": "Pads",
+   "options": [
+    "A",
+    "B"
+   ],
+   "default": 0
+  },
+  {
+   "key": "xfade",
+   "name": "Crossfader",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "dynamic_display": true
+  },
+  {
+   "key": "xfade_curve",
+   "name": "Curve",
+   "options": [
+    "Smooth",
+    "Sharp"
+   ],
+   "default": 0
+  },
+  {
+   "key": "pad",
+   "name": "Pad",
+   "min": 1,
+   "max": 32,
+   "default": 1,
+   "display": "int",
+   "dynamic_display": true,
+   "refresh_display": true
+  },
+  {
+   "key": "sp_gain",
+   "name": "Gain",
+   "min": -48,
+   "max": 12,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "sp_pitch",
+   "name": "Pitch",
+   "min": -12,
+   "max": 12,
+   "default": 0,
+   "unit": "st",
+   "dynamic_display": true
+  },
+  {
+   "key": "sp_pan",
+   "name": "Pan",
+   "min": -1,
+   "max": 1,
+   "default": 0,
+   "dynamic_display": true
+  },
+  {
+   "key": "sp_mode",
+   "name": "Mode",
+   "options": [
+    "One-shot",
+    "Loop",
+    "Slice",
+    "Seq One",
+    "Seq Loop",
+    "Loop Cont"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_slice",
+   "name": "Slice",
+   "min": 1,
+   "max": 16,
+   "default": 1,
+   "display": "int"
+  },
+  {
+   "key": "sp_reverse",
+   "name": "Reverse",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_choke",
+   "name": "Choke",
+   "options": [
+    "Off",
+    "1",
+    "2",
+    "3",
+    "4"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_start",
+   "name": "Start",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "dynamic_display": true
+  },
+  {
+   "key": "sp_end",
+   "name": "End",
+   "min": 0,
+   "max": 1,
+   "default": 1,
+   "dynamic_display": true
+  },
+  {
+   "key": "sp_stretch",
+   "name": "Stretch",
+   "options": [
+    "Off",
+    "Repitch",
+    "Beats",
+    "Texture",
+    "Akai Classic",
+    "Akai Revised"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_char",
+   "name": "Character",
+   "options": [
+    "Clean",
+    "SP-1200",
+    "MPC60",
+    "S950",
+    "Lo-Fi"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_swap",
+   "name": "Swap",
+   "options": [
+    "Off",
+    "1",
+    "2",
+    "3",
+    "4"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_swapq",
+   "name": "Swap At",
+   "options": [
+    "Slice",
+    "1/16",
+    "Beat",
+    "Bar"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_group",
+   "name": "Group",
+   "options": [
+    "A",
+    "B",
+    "C",
+    "D"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sp_velsens",
+   "name": "Velocity",
+   "min": 0,
+   "max": 1,
+   "default": 1,
+   "dynamic_display": true
+  },
+  {
+   "key": "seq_run",
+   "name": "Sequencer",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
+  },
+  {
+   "key": "seq_length",
+   "name": "Length",
+   "min": 1,
+   "max": 32,
+   "default": 16,
+   "display": "int"
+  },
+  {
+   "key": "seq_res",
+   "name": "Step",
+   "options": [
+    "1/8",
+    "1/16",
+    "1/32"
+   ],
+   "default": 1
+  },
+  {
+   "key": "seq_fill",
+   "name": "Fill",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mut_go",
+   "name": "Mutate",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mut_amount",
+   "name": "Amount",
+   "min": 0,
+   "max": 100,
+   "default": 35,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "snapshot",
+   "name": "Snapshot",
+   "min": 0,
+   "max": 8,
+   "default": 0,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "bank_active",
+   "name": "Break Bank",
+   "min": 1,
+   "max": 8,
+   "default": 1,
+   "display": "int"
+  },
+  {
+   "key": "fx_group",
+   "name": "FX Group",
+   "options": [
+    "A",
+    "B",
+    "C",
+    "D"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_fxmute",
+   "name": "Mute",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_lpf",
+   "name": "LPF",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_hpf",
+   "name": "HPF",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_bpf",
+   "name": "BPF",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_crush",
+   "name": "Crush",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_rate",
+   "name": "Rate",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_drive",
+   "name": "Drive",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_tape",
+   "name": "Tape",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_akaizer",
+   "name": "Akaizer",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_repeat",
+   "name": "Repeat",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_gate",
+   "name": "Gate",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_pitch",
+   "name": "Pitch Drop",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_delay",
+   "name": "Delay",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_reverb",
+   "name": "Reverb",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_comb",
+   "name": "Comb",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_reverse",
+   "name": "Reverse",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_destroy",
+   "name": "Destroy",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_mangle",
+   "name": "Amen Mangle",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_rewind",
+   "name": "Rewind",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_darken",
+   "name": "Darken",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_tapestop",
+   "name": "Tape Stop",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_dive",
+   "name": "Pitch Dive",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_roll",
+   "name": "Jungle Roll",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_scifi",
+   "name": "Sci-Fi",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "macro_amount",
+   "name": "Amount",
+   "min": 0,
+   "max": 100,
+   "default": 60,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "macro_group",
+   "name": "Macro Group",
+   "options": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "All"
+   ],
+   "default": 4
+  },
+  {
+   "key": "macro_latch",
+   "name": "Latch",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "grp_a_level",
+   "name": "Group A",
+   "min": -60,
+   "max": 6,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "grp_b_level",
+   "name": "Group B",
+   "min": -60,
+   "max": 6,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "grp_c_level",
+   "name": "Group C",
+   "min": -60,
+   "max": 6,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "grp_d_level",
+   "name": "Group D",
+   "min": -60,
+   "max": 6,
+   "default": 0,
+   "unit": "dB",
+   "dynamic_display": true
+  },
+  {
+   "key": "grp_a_mute",
+   "name": "Mute A",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "grp_b_mute",
+   "name": "Mute B",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "grp_c_mute",
+   "name": "Mute C",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "grp_d_mute",
+   "name": "Mute D",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  }
+ ],
+ "sections": [
+  {
+   "label": "Kit",
+   "keys": [
+    "kit",
+    "kit_load",
+    "status",
+    "master_gain",
+    "master_limiter",
+    "scene_view",
+    "xfade",
+    "xfade_curve"
+   ]
+  },
+  {
+   "label": "Pad",
+   "keys": [
+    "pad",
+    "sp_gain",
+    "sp_pitch",
+    "sp_pan",
+    "sp_mode",
+    "sp_slice",
+    "sp_reverse",
+    "sp_choke",
+    "sp_start",
+    "sp_end",
+    "sp_stretch",
+    "sp_char",
+    "sp_swap",
+    "sp_swapq",
+    "sp_group",
+    "sp_velsens"
+   ]
+  },
+  {
+   "label": "Sequencer",
+   "keys": [
+    "seq_run",
+    "seq_length",
+    "seq_res",
+    "seq_fill",
+    "mut_go",
+    "mut_amount",
+    "snapshot",
+    "bank_active"
+   ]
+  },
+  {
+   "label": "FX",
+   "keys": [
+    "fx_group",
+    "fx_fxmute",
+    "fx_lpf",
+    "fx_hpf",
+    "fx_bpf",
+    "fx_crush",
+    "fx_rate",
+    "fx_drive",
+    "fx_tape",
+    "fx_akaizer",
+    "fx_repeat",
+    "fx_gate",
+    "fx_pitch",
+    "fx_delay",
+    "fx_reverb",
+    "fx_comb",
+    "fx_reverse"
+   ]
+  },
+  {
+   "label": "Macros",
+   "keys": [
+    "macro_destroy",
+    "macro_mangle",
+    "macro_rewind",
+    "macro_darken",
+    "macro_tapestop",
+    "macro_dive",
+    "macro_roll",
+    "macro_scifi",
+    "macro_amount",
+    "macro_group",
+    "macro_latch"
+   ]
+  },
+  {
+   "label": "Mixer",
+   "keys": [
+    "grp_a_level",
+    "grp_b_level",
+    "grp_c_level",
+    "grp_d_level",
+    "grp_a_mute",
+    "grp_b_mute",
+    "grp_c_mute",
+    "grp_d_mute"
+   ]
+  }
+ ]
+}

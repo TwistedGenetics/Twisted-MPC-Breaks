@@ -1,0 +1,166 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # lets a build of main publish a GitHub Release
+
+env:
+  # Cross toolchain for Gen1 MPCs / Force (armhf, glibc 2.27, GCC 14), pinned to a release.
+  XTOOLS_URL: https://github.com/tttapa/toolchains/releases/download/1.4.0/x-tools-armv7-neon-linux-gnueabihf-gcc14.tar.xz
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The plugin built for this x86 runner, under ASan/UBSan, driven through the
+  # same VST2 calls MPC makes: the toolkit's generic host test and our own.
+  # ---------------------------------------------------------------------------
+  offline-tests:
+    name: Offline tests (x86, ASan)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev
+
+      - name: Cache downloads (JUCE, FreeType)
+        uses: actions/cache@v4
+        with:
+          path: build-test/_deps
+          key: deps-juce-8.0.4-ft-2.13.3-x86
+
+      - name: Configure
+        run: cmake -S . -B build-test -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTBM_SANITIZE=ON
+
+      - name: Build
+        run: cmake --build build-test -j 4
+
+      - name: Twisted Breaks test (kits, pads, song position, state)
+        run: |
+          cd build-test
+          ASAN_OPTIONS=detect_leaks=0 ./tbm_test
+
+      - name: Toolkit host test (parameters, Q-Links, state, threads)
+        run: |
+          cd build-test
+          ASAN_OPTIONS=detect_leaks=0 ./toolkit_host_test
+
+  # ---------------------------------------------------------------------------
+  # The MPC build: armv7 plugin, skin, release zip.
+  # ---------------------------------------------------------------------------
+  mpc-armv7:
+    name: MPC plugin (armv7, Gen1 MPC / Force)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev x11proto-dev
+          pip install pillow
+
+      - name: Cross toolchain
+        run: |
+          mkdir -p "$HOME/opt"
+          curl -sSL "$XTOOLS_URL" | tar xJ -C "$HOME/opt"
+          echo "TBM_XTOOLS=$HOME/opt/x-tools/armv7-neon-linux-gnueabihf" >> "$GITHUB_ENV"
+          "$HOME/opt/x-tools/armv7-neon-linux-gnueabihf/bin/armv7-neon-linux-gnueabihf-g++" --version | head -1
+
+      - name: X11 headers for the cross build
+        # JUCE's Linux GUI code needs X11's headers to compile (they are architecture-neutral); it loads
+        # libX11 at runtime only when a window opens, which never happens in the plugin.
+        run: |
+          mkdir -p x11inc
+          cp -r /usr/include/X11 x11inc/
+
+      - name: Cache downloads (JUCE, FreeType)
+        uses: actions/cache@v4
+        with:
+          path: build-arm/_deps
+          key: deps-juce-8.0.4-ft-2.13.3-arm
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/armv7-mpc.cmake -DTBM_XTOOLS="$TBM_XTOOLS" \
+            -DTBM_X11_INCLUDE="$PWD/x11inc" -DTBM_HOST_TEST=OFF
+
+      - name: Build
+        run: cmake --build build-arm -j 4
+
+      - name: Check the library
+        run: |
+          SO=build-arm/twistedbreaks.so
+          "$TBM_XTOOLS/bin/armv7-neon-linux-gnueabihf-strip" "$SO"
+          file "$SO"
+          ls -l "$SO"
+          echo "needs: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')"
+          exported=$(readelf --dyn-syms -W "$SO" | grep -E ' GLOBAL .* [0-9]+ [A-Za-z]' | grep -v UND | awk '{print $8}' | tr '\n' ' ')
+          echo "exported: $exported"
+          [ "$exported" = "VSTPluginMain " ] || { echo "::error::exports more than VSTPluginMain"; exit 1; }
+          glibc=$(readelf -V "$SO" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "highest glibc: $glibc (MPC OS 2.x has 2.32, 3.x has 2.39)"
+          if readelf -V "$SO" | grep -q 'GLIBCXX_'; then echo "::error::links libstdc++ dynamically"; exit 1; fi
+          for n in $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/'); do
+            case "$n" in libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-armhf.so.3) ;;
+              *) echo "::error::needs $n, which an MPC may not have"; exit 1 ;;
+            esac
+          done
+
+      - name: Skin and plugin-list entry
+        run: |
+          MV=external/mpc-vst-plugins
+          mkdir -p vst/build
+          gcc -O2 -I$MV/tools/vendor/force-shadow/tools -o vst/build/shadow_art $MV/tools/shadow_art.c -lm
+          python3 $MV/tools/gen_vst.py vst/vst.json
+          python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
+
+      - name: Package
+        run: |
+          VERSION=$(sed -n 's/^project(TwistedMpcBreaks VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          python3 external/mpc-vst-plugins/tools/release.py \
+            --so build-arm/twistedbreaks.so \
+            --skin "vst/build/skin/Twisted Genetics - VST - Twisted Breaks" \
+            --entry vst/build/pluginlist-entry.xml \
+            --version "$VERSION" \
+            --user-data data \
+            --about "Twisted Breaks: the jungle / drum & bass break sampler, sequencer and FX, as an MPC plugin." \
+            -o dist
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TwistedBreaks-MPC-armv7
+          path: dist/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skin-preview
+          path: skin-preview/
+
+      # Every green build of main becomes a downloadable Release (repo front page -> Releases).
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${VERSION}-build.${{ github.run_number }}"
+          gh release create "$TAG" dist/*.zip \
+            --target "${{ github.sha }}" \
+            --title "Twisted Breaks MPC ${VERSION} (build ${{ github.run_number }})" \
+            --prerelease \
+            --notes "$(git log -1 --pretty=%B)
+
+          Untested on hardware yet. Needs an SSH-enabled Gen1 MPC (One, Live, Live II, X, Key 61) or Force on MPC OS 3.x.
+          Install: drop the zip into the community MPC plugin installer (sd88me/mpc-vst-plugins), or unzip it and follow INSTALL.md."

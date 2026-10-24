@@ -1,0 +1,6 @@
+[submodule "external/twisted-breaks"]
+	path = external/twisted-breaks
+	url = https://github.com/TwistedGenetics/Twisted-Breaks
+[submodule "external/mpc-vst-plugins"]
+	path = external/mpc-vst-plugins
+	url = https://github.com/sd88me/mpc-vst-plugins

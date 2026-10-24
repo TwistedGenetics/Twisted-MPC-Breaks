@@ -1,0 +1,18 @@
+{
+  "name": "Twisted Breaks",
+  "vendor": "Twisted Genetics",
+  "uid": "TwBk",
+  "version": 1000,
+  "so": "twistedbreaks.so",
+  "params": "params.json",
+  "layout": "layout.conf",
+  "defines": {
+    "MODULE_SUBDIR": "\"data\"",
+    "HAS_SONG_POS": 1,
+    "SAMPLE_ACCURATE": 1,
+    "PARAM_TEXT_MAX": 32
+  },
+  "cc": false,
+  "build": {"root": "..", "sources": ["src/MpcHost.cpp"], "cflags": [], "libs": ["-ldl"]},
+  "targets": ["armv7"]
+}
