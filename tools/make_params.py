@@ -91,7 +91,9 @@ section("Sequencer", [
     trig("mut_go", "Mutate"),
     num("mut_amount", "Amount", 0, 100, 35, "%", display="int"),
     opts("snapshot", "Snapshot", ["Off", "1", "2", "3", "4", "5", "6", "7", "8"], 0),
-    opts("bank_active", "Break Bank", ["1", "2", "3", "4", "5", "6", "7", "8"], 0),
+    # not bare numbers: the toolkit's picture lines match "<key>:<n>" against option NAMES before indexes,
+    # so options named "1".."8" would light the key one to the right of the setting
+    opts("bank_active", "Break Bank", ["Bank 1", "Bank 2", "Bank 3", "Bank 4", "Bank 5", "Bank 6", "Bank 7", "Bank 8"], 0),
 ])
 
 # ---- FX: the 16 performance effects of one group -------------------------------------

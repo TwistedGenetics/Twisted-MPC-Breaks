@@ -310,14 +310,14 @@
    "key": "bank_active",
    "name": "Break Bank",
    "options": [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8"
+    "Bank 1",
+    "Bank 2",
+    "Bank 3",
+    "Bank 4",
+    "Bank 5",
+    "Bank 6",
+    "Bank 7",
+    "Bank 8"
    ],
    "default": 0
   },
