@@ -13,6 +13,19 @@
     "PARAM_TEXT_MAX": 32
   },
   "cc": false,
-  "build": {"root": "..", "sources": ["src/MpcHost.cpp"], "cflags": [], "libs": ["-ldl"]},
-  "targets": ["armv7"]
+  "build": {
+    "root": "..",
+    "sources": [
+      "src/MpcHost.cpp"
+    ],
+    "cflags": [],
+    "libs": [
+      "-ldl"
+    ]
+  },
+  "targets": [
+    "armv7"
+  ],
+  "art": "html",
+  "tile": "art/tile.png"
 }

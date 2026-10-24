@@ -117,14 +117,24 @@ jobs:
             esac
           done
 
+      - name: Skin drawing is in step with the script
+        run: |
+          pip install numpy
+          python3 skin/make_skin.py > /dev/null
+          git diff --exit-code vst/layout.conf || { echo "::error::vst/layout.conf differs from what skin/make_skin.py writes: run it and commit"; exit 1; }
+
       - name: Skin and plugin-list entry
         run: |
           MV=external/mpc-vst-plugins
           mkdir -p vst/build
-          tools/ci_run.sh "shadow_art" gcc -O2 -I$MV/tools/vendor/force-shadow/tools -o vst/build/shadow_art $MV/tools/shadow_art.c -lm
-          tools/ci_run.sh "Skin" python3 $MV/tools/gen_vst.py vst/vst.json
+          # The skin's pictures are drawn by skin/make_skin.py (committed in vst/art); the toolkit's browser
+          # renderer (headless Chromium, its tools/html_art image) composes them into MPC's skin format.
+          tools/ci_run.sh "Renderer image" docker build -q -t mpc-vst-html-art $MV/tools/html_art
+          run() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/w -w /w mpc-vst-html-art "$@"; }
+          tools/ci_run.sh "Skin" run python3 $MV/tools/gen_vst.py vst/vst.json
           mkdir -p skin-preview
-          tools/ci_run.sh "Skin preview" python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
+          tools/ci_run.sh "Skin preview" run python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
+          (cd skin-preview && zip -q ../TwistedBreaks-MPC-skin-preview.zip *.png)
 
       - name: Package
         run: |
@@ -157,7 +167,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${VERSION}-build.${{ github.run_number }}"
-          tools/ci_run.sh Release gh release create "$TAG" dist/*.zip \
+          tools/ci_run.sh Release gh release create "$TAG" dist/*.zip TwistedBreaks-MPC-skin-preview.zip \
             --target "${{ github.sha }}" \
             --title "Twisted Breaks MPC ${VERSION} (build ${{ github.run_number }})" \
             --prerelease \
