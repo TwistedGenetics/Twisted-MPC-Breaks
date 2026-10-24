@@ -37,20 +37,20 @@ jobs:
           key: deps-juce-8.0.4-ft-2.13.3-x86
 
       - name: Configure
-        run: cmake -S . -B build-test -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTBM_SANITIZE=ON
+        run: tools/ci_run.sh Configure cmake -S . -B build-test -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTBM_SANITIZE=ON
 
       - name: Build
-        run: cmake --build build-test -j 4
+        run: tools/ci_run.sh Build cmake --build build-test -j 4
 
       - name: Twisted Breaks test (kits, pads, song position, state)
         run: |
           cd build-test
-          ASAN_OPTIONS=detect_leaks=0 ./tbm_test
+          ASAN_OPTIONS=detect_leaks=0 ../tools/ci_run.sh tbm_test ./tbm_test
 
       - name: Toolkit host test (parameters, Q-Links, state, threads)
         run: |
           cd build-test
-          ASAN_OPTIONS=detect_leaks=0 ./toolkit_host_test
+          ASAN_OPTIONS=detect_leaks=0 ../tools/ci_run.sh host_test ./toolkit_host_test
 
   # ---------------------------------------------------------------------------
   # The MPC build: armv7 plugin, skin, release zip.
@@ -72,7 +72,7 @@ jobs:
       - name: Cross toolchain
         run: |
           mkdir -p "$HOME/opt"
-          curl -sSL "$XTOOLS_URL" | tar xJ -C "$HOME/opt"
+          tools/ci_run.sh Toolchain bash -c 'curl -fsSL "$XTOOLS_URL" -o /tmp/xtools.tar.xz && tar xJf /tmp/xtools.tar.xz -C "$HOME/opt"'
           echo "TBM_XTOOLS=$HOME/opt/x-tools/armv7-neon-linux-gnueabihf" >> "$GITHUB_ENV"
           "$HOME/opt/x-tools/armv7-neon-linux-gnueabihf/bin/armv7-neon-linux-gnueabihf-g++" --version | head -1
 
@@ -91,25 +91,25 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          tools/ci_run.sh "Configure (armv7)" cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=cmake/armv7-mpc.cmake -DTBM_XTOOLS="$TBM_XTOOLS" \
             -DTBM_X11_INCLUDE="$PWD/x11inc" -DTBM_HOST_TEST=OFF
 
       - name: Build
-        run: cmake --build build-arm -j 4
+        run: tools/ci_run.sh "Build (armv7)" cmake --build build-arm -j 4
 
       - name: Check the library
         run: |
           SO=build-arm/twistedbreaks.so
           "$TBM_XTOOLS/bin/armv7-neon-linux-gnueabihf-strip" "$SO"
           file "$SO"
-          ls -l "$SO"
-          echo "needs: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')"
+          echo "::notice title=Library::$(ls -l "$SO")"
+          echo "::notice title=Library::needs: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')"
           exported=$(readelf --dyn-syms -W "$SO" | grep -E ' GLOBAL .* [0-9]+ [A-Za-z]' | grep -v UND | awk '{print $8}' | tr '\n' ' ')
-          echo "exported: $exported"
+          echo "::notice title=Library::exported: $exported"
           [ "$exported" = "VSTPluginMain " ] || { echo "::error::exports more than VSTPluginMain"; exit 1; }
           glibc=$(readelf -V "$SO" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
-          echo "highest glibc: $glibc (MPC OS 2.x has 2.32, 3.x has 2.39)"
+          echo "::notice title=Library::highest glibc: $glibc (MPC OS 2.x has 2.32, 3.x has 2.39)"
           if readelf -V "$SO" | grep -q 'GLIBCXX_'; then echo "::error::links libstdc++ dynamically"; exit 1; fi
           for n in $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/'); do
             case "$n" in libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-armhf.so.3) ;;
