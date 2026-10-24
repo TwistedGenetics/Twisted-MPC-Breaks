@@ -301,7 +301,7 @@ namespace
             }
             else if (auto* p = resolve (key))
             {
-                p->setValueNotifyingHost (p->convertTo0to1 (v));
+                p->setValueNotifyingHost (p->convertTo0to1 (toPlain (idx, p, v)));
                 if (idx >= 0 && PARAMS[idx].momentary && v > 0.5f)
                     triggerHold[(size_t) idx].store (4 * kBlock);   // a rising edge for the engine, then back to 0
             }
@@ -327,7 +327,7 @@ namespace
             if (auto* p = resolve (k.toRawUTF8()))
             {
                 if (display) return put (buf, len, p->getCurrentValueAsText());
-                const float plain = p->convertFrom0to1 (p->getValue());
+                const float plain = fromPlain (paramIndex (k.toRawUTF8()), p, p->convertFrom0to1 (p->getValue()));
                 if (dynamic_cast<juce::AudioParameterFloat*> (p) == nullptr)
                     return put (buf, len, juce::String (juce::roundToInt (plain)));
                 return put (buf, len, juce::String (plain, 4));
@@ -359,6 +359,26 @@ namespace
                 return f >= 0 ? apvts.getParameter (tb::fx::paramId (fxGroup.load(), f)) : nullptr;
             }
             return apvts.getParameter (juce::String::fromUTF8 (key));
+        }
+
+        /** A whole-number Twisted Breaks parameter shown on the MPC as a list of options (Break Bank 1-8):
+            the MPC sends the option's index, the parameter wants its own number. */
+        static const juce::AudioParameterInt* asIntList (int idx, const juce::RangedAudioParameter* p)
+        {
+            if (idx < 0 || PARAMS[idx].nopts <= 0) return nullptr;
+            return dynamic_cast<const juce::AudioParameterInt*> (p);
+        }
+
+        static float toPlain (int idx, const juce::RangedAudioParameter* p, float v)
+        {
+            if (auto* ip = asIntList (idx, p)) return (float) ip->getRange().getStart() + v;
+            return v;
+        }
+
+        static float fromPlain (int idx, const juce::RangedAudioParameter* p, float plain)
+        {
+            if (auto* ip = asIntList (idx, p)) return plain - (float) ip->getRange().getStart();
+            return plain;
         }
 
         float currentNorm (int i) const

@@ -132,6 +132,9 @@ int main(void) {
     display(a, "pad", text);
     CHECK(strncmp(text, "01", 2) == 0, "pad 1 shows as '%s'", text);
     set_plain(a, "sp_pitch", 0);
+    set_plain(a, "bank_active", 2); run(a, 2);
+    CHECK(fabsf(plain(a, "bank_active") - 2) < 0.05f, "BREAK BANK option 3 round-trips (%.2f)", plain(a, "bank_active"));
+    set_plain(a, "bank_active", 0); run(a, 2);
 
     /* 3. the kit's pattern from MPC's transport */
     set_plain(a, "seq_run", 1);

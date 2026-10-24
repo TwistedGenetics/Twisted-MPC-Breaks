@@ -293,19 +293,33 @@
   {
    "key": "snapshot",
    "name": "Snapshot",
-   "min": 0,
-   "max": 8,
-   "default": 0,
-   "display": "int",
-   "dynamic_display": true
+   "options": [
+    "Off",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ],
+   "default": 0
   },
   {
    "key": "bank_active",
    "name": "Break Bank",
-   "min": 1,
-   "max": 8,
-   "default": 1,
-   "display": "int"
+   "options": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ],
+   "default": 0
   },
   {
    "key": "fx_group",

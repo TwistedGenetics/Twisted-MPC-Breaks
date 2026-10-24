@@ -90,8 +90,8 @@ section("Sequencer", [
     opts("seq_fill", "Fill", ONOFF, 0),
     trig("mut_go", "Mutate"),
     num("mut_amount", "Amount", 0, 100, 35, "%", display="int"),
-    num("snapshot", "Snapshot", 0, 8, 0, display="int", dynamic_display=True),
-    num("bank_active", "Break Bank", 1, 8, 1, display="int"),
+    opts("snapshot", "Snapshot", ["Off", "1", "2", "3", "4", "5", "6", "7", "8"], 0),
+    opts("bank_active", "Break Bank", ["1", "2", "3", "4", "5", "6", "7", "8"], 0),
 ])
 
 # ---- FX: the 16 performance effects of one group -------------------------------------
