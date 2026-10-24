@@ -130,10 +130,9 @@ jobs:
           # The skin's pictures are drawn by skin/make_skin.py (committed in vst/art); the toolkit's browser
           # renderer (headless Chromium, its tools/html_art image) composes them into MPC's skin format.
           tools/ci_run.sh "Renderer image" docker build -q -t mpc-vst-html-art $MV/tools/html_art
-          run() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/w -w /w mpc-vst-html-art "$@"; }
-          tools/ci_run.sh "Skin" run python3 $MV/tools/gen_vst.py vst/vst.json
+          tools/ci_run.sh "Skin" tools/in_renderer.sh python3 $MV/tools/gen_vst.py vst/vst.json
           mkdir -p skin-preview
-          tools/ci_run.sh "Skin preview" run python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
+          tools/ci_run.sh "Skin preview" tools/in_renderer.sh python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
           (cd skin-preview && zip -q ../TwistedBreaks-MPC-skin-preview.zip *.png)
 
       - name: Package
