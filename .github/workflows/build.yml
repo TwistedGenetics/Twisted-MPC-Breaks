@@ -121,15 +121,16 @@ jobs:
         run: |
           MV=external/mpc-vst-plugins
           mkdir -p vst/build
-          gcc -O2 -I$MV/tools/vendor/force-shadow/tools -o vst/build/shadow_art $MV/tools/shadow_art.c -lm
-          python3 $MV/tools/gen_vst.py vst/vst.json
-          python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
+          tools/ci_run.sh "shadow_art" gcc -O2 -I$MV/tools/vendor/force-shadow/tools -o vst/build/shadow_art $MV/tools/shadow_art.c -lm
+          tools/ci_run.sh "Skin" python3 $MV/tools/gen_vst.py vst/vst.json
+          mkdir -p skin-preview
+          tools/ci_run.sh "Skin preview" python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
 
       - name: Package
         run: |
           VERSION=$(sed -n 's/^project(TwistedMpcBreaks VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          python3 external/mpc-vst-plugins/tools/release.py \
+          tools/ci_run.sh Package python3 external/mpc-vst-plugins/tools/release.py \
             --so build-arm/twistedbreaks.so \
             --skin "vst/build/skin/Twisted Genetics - VST - Twisted Breaks" \
             --entry vst/build/pluginlist-entry.xml \
@@ -156,7 +157,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${VERSION}-build.${{ github.run_number }}"
-          gh release create "$TAG" dist/*.zip \
+          tools/ci_run.sh Release gh release create "$TAG" dist/*.zip \
             --target "${{ github.sha }}" \
             --title "Twisted Breaks MPC ${VERSION} (build ${{ github.run_number }})" \
             --prerelease \
