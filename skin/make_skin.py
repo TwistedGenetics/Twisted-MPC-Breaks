@@ -595,7 +595,7 @@ def render(tab, out):
     slug = tab.name.lower().replace(" ", "_")
     out.lines.append("")
     out.lines.append("[tab %s]" % tab.name)
-    out.lines.append("art file=art/%s.png fit=stretch" % slug)
+    out.lines.append("art file=art/tab_%s.png fit=stretch" % slug)
     for c in tab.controls:
         k, key = c["kind"], c["key"]
         if k == "knob":
@@ -651,11 +651,11 @@ def render(tab, out):
             out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d%s img=art/clear.png img_on=art/clear.png' %
                              (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"], rows))
         elif k == "readout":
-            out.lines.append('readout cx=%d cy=%d w=%d h=%d label="" key=%s tsize=%d tcolor=%s talign=center' %
+            out.lines.append('readout cx=%d cy=%d w=%d h=%d label="" key=%s box=0 tsize=%d tcolor=%s talign=center' %
                              (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, c["tsize"], VFD_HEX))
     for title, keys in tab.qlinks:
         out.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
-    bg.save(os.path.join(ART, slug + ".png"), optimize=True)
+    bg.save(os.path.join(ART, "tab_" + slug + ".png"), optimize=True)   # tab_: never a control's name
     prev.convert("RGB").save(os.path.join(PREVIEW, slug + ".png"))
     return bg
 

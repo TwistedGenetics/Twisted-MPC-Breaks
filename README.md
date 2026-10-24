@@ -52,7 +52,10 @@ the Q-Links drive it.
   fontconfig or X11 libraries, so the `.so` needs nothing but libc. It exports only `VSTPluginMain`.
 - `tools/make_params.py` writes `vst/params.json`, the controls the MPC sees. **Append only**: MPC projects store
   parameters by number (`vst/params.lock` fails the build if one moves).
-- `vst/layout.conf` is the skin layout (toolkit `layout.conf` syntax, editable in its Skin Studio).
+- `skin/make_skin.py` draws the skin in the Mac plugin's control-room look (enamel, rust, bakelite plates,
+  amber lamp keys, VFD windows) and writes `vst/art/` and `vst/layout.conf` from the same coordinates. Edit the
+  script, not the layout. Its own previews are in `skin/preview/`; CI renders the real skin with the toolkit's
+  browser renderer and attaches those previews to each release.
 
 ## Build
 GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
@@ -69,4 +72,3 @@ Locally (Linux): `git submodule update --init`, then
 - Breaks load from kits only (no per-pad sample browser yet).
 - Sample paths in a saved project point into the plugin's `data` folder, so a project moved to another MPC
   needs that MPC to have the same kits installed.
-- The skin is the toolkit's default look for now; the control-room look comes later.
