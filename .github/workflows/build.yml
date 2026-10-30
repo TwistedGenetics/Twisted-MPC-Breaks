@@ -169,7 +169,7 @@ jobs:
           tools/ci_run.sh Release gh release create "$TAG" dist/*.zip TwistedBreaks-MPC-skin-preview.zip \
             --target "${{ github.sha }}" \
             --title "Twisted Breaks MPC ${VERSION} (build ${{ github.run_number }})" \
-            --prerelease \
+            --latest \
             --notes "$(git log -1 --pretty=%B)
 
           Untested on hardware yet. Needs an SSH-enabled Gen1 MPC (One, Live, Live II, X, Key 61) or Force on MPC OS 3.x.
