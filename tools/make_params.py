@@ -120,5 +120,19 @@ for g in "abcd":
     mix.append(opts("grp_%s_mute" % g, "Mute %s" % g.upper(), ONOFF, 0))
 section("Mixer", mix)
 
+# ---- SLICE (0.2): the selected pad's slicer ---------------------------------------------
+# Option names are never bare numbers: the toolkit's picture lines match "<key>:<n>" against names first.
+section("Slice", [
+    num("sl_sens", "Sensitivity", 0, 100, 50, "%", display="int"),
+    opts("sl_count", "Slice Count", ["4 Slices", "8 Slices", "16 Slices"], 2),
+    opts("sl_pick", "Slice", ["Slice %d" % (i + 1) for i in range(16)], 0),
+    trig("sl_auto", "Auto Slice"),
+    trig("sl_equal", "Equal Slice"),
+    trig("sl_reset", "Reset Slices"),
+    trig("sl_unslice", "Unslice"),
+    trig("sl_spread", "Spread"),
+    readout("sl_info", "Slicer"),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

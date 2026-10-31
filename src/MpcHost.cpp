@@ -173,6 +173,9 @@ namespace
                 proc->getPresets().setRootForTesting (dataRoot);
                 proc->getPresets().ensureFactoryContent();
                 rescanKits();
+                infoTimer.onTick = [this] { refreshInfo(); };
+                infoTimer.startTimer (100);
+                refreshInfo();
             });
 
             buffer.setSize (2, kBlock);
@@ -194,6 +197,7 @@ namespace
         {
             MessageThread::run ([this]
             {
+                infoTimer.stopTimer();
                 proc->releaseResources();
                 proc.reset();
             });
@@ -299,6 +303,24 @@ namespace
                 fxGroup.store (g);
                 proc->getEngine().setFxTargetGroup (g);
             }
+            else if (std::strcmp (key, "sl_sens") == 0)
+            {
+                const float sens = juce::jlimit (0.0f, 1.0f, v / 100.0f);
+                const int pad = selectedPad.load();
+                slSens.store (sens);
+                juce::MessageManager::callAsync ([this, pad, sens] { proc->getSamples().setSensitivity (pad, sens); });
+            }
+            else if (std::strcmp (key, "sl_count") == 0)
+            {
+                const int option = juce::jlimit (0, 2, juce::roundToInt (v));
+                const int pad = selectedPad.load();
+                slCountOption.store (option);
+                juce::MessageManager::callAsync ([this, pad, option] { proc->getSamples().setSliceCount (pad, kSliceCounts[option]); });
+            }
+            else if (startsWith (key, "sl_") && idx >= 0 && PARAMS[idx].momentary)
+            {
+                if (v > 0.5f) slicerAction (key, selectedPad.load());
+            }
             else if (auto* p = resolve (key))
             {
                 p->setValueNotifyingHost (p->convertTo0to1 (toPlain (idx, p, v)));
@@ -312,7 +334,10 @@ namespace
         int getParam (const char* key, char* buf, int len)
         {
             if (std::strcmp (key, "state") == 0) return saveState (buf, len);
-            if (std::strcmp (key, "status") == 0) return put (buf, len, statusText());
+            if (std::strcmp (key, "status") == 0) return putCached (statusBuf, buf, len);
+            if (std::strcmp (key, "sl_info") == 0) return putCached (slInfoBuf, buf, len);
+            if (std::strcmp (key, "sl_sens") == 0) return put (buf, len, juce::String (juce::roundToInt (slSens.load() * 100.0f)));
+            if (std::strcmp (key, "sl_count") == 0) return put (buf, len, juce::String (slCountOption.load()));
             if (std::strcmp (key, "kit") == 0) return put (buf, len, juce::String (kitIndex.load()));
             if (std::strcmp (key, "kit_display") == 0) return put (buf, len, kitName (kitIndex.load()));
             if (startsWith (key, "kit:")) return put (buf, len, kitName (std::atoi (key + 4)));
@@ -353,6 +378,8 @@ namespace
             auto& apvts = proc->getParameters();
             if (startsWith (key, "sp_"))
                 return apvts.getParameter (tb::params::padId (selectedPad.load(), key + 3));
+            if (std::strcmp (key, "sl_pick") == 0)
+                return apvts.getParameter (tb::params::padId (selectedPad.load(), tb::params::padSlice));
             if (startsWith (key, "fx_"))
             {
                 const int f = fxIdForKey (key + 3);
@@ -387,6 +414,8 @@ namespace
             if (std::strcmp (key, "pad") == 0) return (float) selectedPad.load();
             if (std::strcmp (key, "fx_group") == 0) return (float) fxGroup.load();
             if (std::strcmp (key, "kit") == 0) return (float) kitIndex.load();
+            if (std::strcmp (key, "sl_sens") == 0) return slSens.load();
+            if (std::strcmp (key, "sl_count") == 0) return (float) slCountOption.load() / 2.0f;
             if (auto* p = resolve (key)) return p->getValue();
             return 0.0f;
         }
@@ -429,7 +458,8 @@ namespace
                 if (PARAMS[i].string_display) continue;   // readouts: the wrapper polls their text
                 const char* key = PARAMS[i].key;
                 const float now = currentNorm (i);
-                const bool follows = (padMoved && startsWith (key, "sp_")) || (groupMoved && startsWith (key, "fx_"));
+                const bool follows = (padMoved && (startsWith (key, "sp_") || startsWith (key, "sl_")))
+                                     || (groupMoved && startsWith (key, "fx_"));
                 if (follows || std::abs (now - reported[(size_t) i]) > 1.0e-4f)
                 {
                     reported[(size_t) i] = now;
@@ -533,15 +563,68 @@ namespace
             status = s;
         }
 
-        juce::String statusText() const
+        /** Message thread, every 100 ms: what the screen's readouts and the slicer's controls
+            show, copied where the audio thread can read it without allocating. */
+        void refreshInfo()
         {
-            juce::String s;
+            juce::String st;
             {
                 std::lock_guard<std::mutex> g (textLock);
-                s = status;
+                st = status;
             }
             const auto presetStatus = proc->getPresets().getStatus();
-            return presetStatus.isNotEmpty() ? presetStatus : s;
+            if (presetStatus.isNotEmpty()) st = presetStatus;
+
+            const int pad = selectedPad.load();
+            const auto info = proc->getSamples().getInfo (pad);
+            slSens.store (juce::jlimit (0.0f, 1.0f, info.sensitivity));
+            slCountOption.store (info.sliceCount <= 4 ? 0 : info.sliceCount <= 8 ? 1 : 2);
+
+            juce::String sl = "PAD " + tb::padLabel (pad) + "  ";
+            if (info.status == tb::SampleManager::Status::empty)  sl << "EMPTY: LOAD A KIT";
+            else if (info.slicing)                                 sl << "SLICING...";
+            else if (info.slices.isEmpty())                        sl << "NOT SLICED";
+            else                                                   sl << info.slices.count << " SLICES";
+
+            std::lock_guard<std::mutex> g (cacheLock);
+            copyText (statusBuf, st.toUpperCase());
+            copyText (slInfoBuf, sl);
+        }
+
+        template <size_t N>
+        static void copyText (std::array<char, N>& dst, const juce::String& s)
+        {
+            std::snprintf (dst.data(), N, "%s", s.toRawUTF8());
+        }
+
+        template <size_t N>
+        int putCached (const std::array<char, N>& src, char* buf, int len) const
+        {
+            if (buf == nullptr || len <= 0) return 0;
+            std::lock_guard<std::mutex> g (cacheLock);
+            std::snprintf (buf, (size_t) len, "%s", src.data());
+            return (int) std::strlen (buf) + 1;
+        }
+
+        /** AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD on the selected pad (queued to the message thread). */
+        void slicerAction (const char* key, int pad)
+        {
+            const std::string k (key);
+            juce::MessageManager::callAsync ([this, k, pad]
+            {
+                auto& samples = proc->getSamples();
+                if (k == "sl_auto")         samples.autoSlice (pad);
+                else if (k == "sl_equal")   samples.equalSlice (pad);
+                else if (k == "sl_reset")   samples.resetSlices (pad);
+                else if (k == "sl_unslice") samples.clearSlices (pad);
+                else if (k == "sl_spread")
+                {
+                    const int n = proc->spreadSlices (pad);
+                    setStatus (n > 0 ? "SPREAD " + juce::String (n) + " SLICES FROM PAD " + tb::padLabel (pad)
+                                     : "NOTHING TO SPREAD: SLICE PAD " + tb::padLabel (pad) + " FIRST");
+                }
+                refreshInfo();
+            });
         }
 
         juce::String padText (int pad) const
@@ -625,6 +708,20 @@ namespace
         juce::StringArray kitNames;
         juce::Array<juce::File> kitFiles;
         juce::String status { "READY" };
+
+        // Read by the screen (and the audio thread's readout polls); written by refreshInfo().
+        static constexpr int kSliceCounts[3] = { 4, 8, 16 };
+        std::atomic<float> slSens { 0.5f };
+        std::atomic<int>   slCountOption { 2 };
+        mutable std::mutex cacheLock;
+        std::array<char, 96> statusBuf { "READY" }, slInfoBuf {};
+
+        struct Ticker final : juce::Timer
+        {
+            std::function<void()> onTick;
+            void timerCallback() override { if (onTick) onTick(); }
+        };
+        Ticker infoTimer;
     };
 
     //==========================================================================

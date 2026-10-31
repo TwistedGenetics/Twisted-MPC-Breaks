@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "params.h"
 
 typedef struct AEffect AEffect;
@@ -135,6 +136,36 @@ int main(void) {
     set_plain(a, "bank_active", 2); run(a, 2);
     CHECK(fabsf(plain(a, "bank_active") - 2) < 0.05f, "BREAK BANK option 3 round-trips (%.2f)", plain(a, "bank_active"));
     set_plain(a, "bank_active", 0); run(a, 2);
+
+    /* 2b. the SLICE page on pad 1 (the factory jungle kit's break) */
+    set_plain(a, "pad", 1); run(a, 2);
+    set_plain(a, "sl_count", 1);                       /* 8 slices */
+    a->setP(a, idx("sl_equal"), 1); run(a, 4); a->setP(a, idx("sl_equal"), 0);
+    for (int i = 0; i < 40; i++) run(a, 20);           /* the message thread does it, the info timer reports it */
+    display(a, "sl_info", text);
+    printf("     after EQUAL x8: '%s'\n", text);
+    CHECK(strstr(text, "8 SLICES") != NULL, "EQUAL with COUNT 8 cuts 8 slices ('%s')", text);
+    set_plain(a, "sl_sens", 70); run(a, 2);
+    a->setP(a, idx("sl_auto"), 1); run(a, 4); a->setP(a, idx("sl_auto"), 0);
+    for (int i = 0; i < 200; i++) {                   /* transient detection runs on the loader thread: real time */
+        run(a, 20); usleep(50000);
+        display(a, "sl_info", text);
+        if (!strstr(text, "SLICING")) break;
+    }
+    display(a, "sl_info", text);
+    printf("     after AUTO SLICE: '%s'\n", text);
+    CHECK(strstr(text, "SLICES") != NULL && strstr(text, "SLICING") == NULL, "AUTO SLICE finds hits ('%s')", text);
+    CHECK(fabsf(plain(a, "sl_sens") - 70) < 1.0f, "SENSITIVITY follows the pad (%.0f)", plain(a, "sl_sens"));
+    set_plain(a, "sl_pick", 3); run(a, 2);
+    CHECK(fabsf(plain(a, "sp_slice") - 4) < 0.05f, "slice key 4 sets the pad's SLICE to 4 (%.2f)", plain(a, "sp_slice"));
+    a->setP(a, idx("sl_spread"), 1); run(a, 4); a->setP(a, idx("sl_spread"), 0);
+    for (int i = 0; i < 40; i++) run(a, 20);
+    set_plain(a, "pad", 2); run(a, 2);
+    CHECK(fabsf(plain(a, "sp_mode") - 2) < 0.05f && fabsf(plain(a, "sp_slice") - 2) < 0.05f,
+          "SPREAD: pad 2 plays slice 2 in SLICE mode (mode %.0f, slice %.0f)", plain(a, "sp_mode"), plain(a, "sp_slice"));
+    note(a, 1, 37, 110); peak = 0; run(a, 40); note(a, 0, 37, 0); run(a, 40);
+    CHECK(peak > 0.01, "and pad 2 plays its slice (peak %.3f)", peak);
+    set_plain(a, "pad", 1); run(a, 2);
 
     /* 3. the kit's pattern from MPC's transport */
     set_plain(a, "seq_run", 1);

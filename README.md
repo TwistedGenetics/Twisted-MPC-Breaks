@@ -30,6 +30,7 @@ the Q-Links drive it.
 |---|---|
 | KIT | Kit picker + LOAD, status line, master level, limiter, scene A/B, crossfader |
 | PAD | The selected pad: gain, pitch, pan, mode, slice, reverse, choke, start/end, stretch, character, SWAP, group, velocity |
+| SLICE | The selected pad's slicer: sensitivity, count (4 / 8 / 16), AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD (each slice onto its own pad), and 16 keys to pick the slice the pad plays |
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |

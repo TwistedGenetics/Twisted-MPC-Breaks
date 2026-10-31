@@ -342,7 +342,7 @@ class Tab:
             self.engraved(x + 24 + (tw + 34) / 2, y + 21, title, 13)
 
     # ---- control decorations drawn into the tab ----------------------------------------------------
-    def caption(self, cx, y, s, size=13):
+    def caption(self, cx, y, s, size=16):
         self.text(cx, y, s, size=size, fill=INK)
 
     def vfd_window(self, cx, cy, w, h):
@@ -372,10 +372,10 @@ class Tab:
     # ---- controls -------------------------------------------------------------------------------------
     def knob(self, key, cx, cy, r, name, bw=112, value=True):
         """A black bakelite knob on a tick ring: name above, the value in a VFD window below (MPC's text)."""
-        self.caption(cx, cy - r - 24, name)
+        self.caption(cx, cy - r - 26, name)
         self.ticks(cx, cy, r)
         if value:
-            self.vfd_window(cx, cy + r + 2 + 15, bw - 8, 26)
+            self.vfd_window(cx, cy + r + 2 + 16, bw - 8, 30)
         soft_shadow(self.hi, ((cx - r) * SS, (cy - r) * SS, (cx + r) * SS, (cy + r) * SS), r * SS, 5 * SS, 200, off=(3, 6), ellipse=True)
         self.controls.append(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=bw, value=value, n=FRAMES))
 
@@ -383,16 +383,22 @@ class Tab:
         """A rotary switch: its positions engraved round it, the name below."""
         n = len(labels)
         d = self.draw
-        f = font(11.5)
+        f = font(14)
         for i, lab in enumerate(labels):
             deg = -120 + 240 * i / (n - 1)
             a = math.radians(deg)
             r0, r1 = r + 5, r + 11
             d.line(((cx + r0 * math.sin(a)) * SS, (cy - r0 * math.cos(a)) * SS,
                     (cx + r1 * math.sin(a)) * SS, (cy - r1 * math.cos(a)) * SS), fill=INK, width=2 * SS)
-            rl = r + 15
+            rl = r + 16
             tx, ty = cx + rl * math.sin(a), cy - rl * math.cos(a)
-            anchor = "mb" if abs(deg) < 30 else ("lm" if deg > 0 else "rm")
+            # near the top, labels grow outward from their tick so neighbours never meet
+            if abs(deg) < 5:
+                anchor = "mb"
+            elif abs(deg) < 60:
+                anchor = "lb" if deg > 0 else "rb"
+            else:
+                anchor = "lm" if deg > 0 else "rm"
             if abs(deg) > 150:
                 anchor = "mt"
             d.text((tx * SS + SS, ty * SS + SS), lab, font=f, fill=(0, 0, 0, 150), anchor=anchor)
@@ -402,22 +408,22 @@ class Tab:
         self.controls.append(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=2 * r + 10, value=False, n=n,
                                   degs=[-120 + 240 * i / (n - 1) for i in range(n)], pointer=True))
 
-    def toggle(self, key, cx, cy, label, w=118, h=58, name=None):
+    def toggle(self, key, cx, cy, label, w=118, h=58, name=None, label_size=17):
         if name:
-            self.caption(cx, cy - h / 2 - 14, name)
-        self.controls.append(dict(kind="pair", key=key, cx=cx, cy=cy, w=w, h=h, label=label))
+            self.caption(cx, cy - h / 2 - 16, name)
+        self.controls.append(dict(kind="pair", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
 
-    def button(self, key, cx, cy, label, w=150, h=58, name=None):
+    def button(self, key, cx, cy, label, w=150, h=58, name=None, label_size=17):
         if name:
-            self.caption(cx, cy - h / 2 - 14, name)
-        self.controls.append(dict(kind="button", key=key, cx=cx, cy=cy, w=w, h=h, label=label))
+            self.caption(cx, cy - h / 2 - 16, name)
+        self.controls.append(dict(kind="button", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
 
-    def keys(self, key, cx, cy, labels, sw, sh, name=None, rows=1, label_size=13):
+    def keys(self, key, cx, cy, labels, sw, sh, name=None, rows=1, label_size=16):
         """A bank of lamp keys, one lit: one picture an option under clear segments (the toolkit's enum_h)."""
         rects = seg_rects(cx, cy, len(labels), sw, sh, rows)
         if name:
             top = min(r[1] for r in rects)
-            self.caption(cx, top - 14, name)
+            self.caption(cx, top - 16, name)
         self.controls.append(dict(kind="keys", key=key, cx=cx, cy=cy, labels=labels, sw=sw, sh=sh, rows=rows,
                                   rects=rects, label_size=label_size))
 
@@ -610,24 +616,26 @@ def render(tab, out):
                 bgc = crop_hi(tab, c["cx"] - side / 2, c["cy"] - side / 2, side, side)
                 bgc.alpha_composite(kn, ((bgc.width - kn.width) // 2, (bgc.height - kn.height) // 2))
                 frames.append(final(bgc, side, side))
-            out.save(strip(frames, side, side), key + ".png")
+            name = slug + "_" + key
+            out.save(strip(frames, side, side), name + ".png")
             prev.alpha_composite(frames[0 if not c.get("pointer") else 0].convert("RGBA"), (int(c["cx"] - side / 2), int(c["cy"] - side / 2)))
-            vs = "vs=16 ink_dim=%s" % VFD_HEX if c["value"] else "vs=0"
+            vs = "vs=19 ink_dim=%s" % VFD_HEX if c["value"] else "vs=0"
             out.lines.append('knob cx=%d cy=%d r=%d label="" key=%s strip=art/%s.png frames=%d ns=0 %s bw=%d' %
-                             (c["cx"], c["cy"] + Y_OFF, r, key, key, n, vs, c["bw"]))
+                             (c["cx"], c["cy"] + Y_OFF, r, key, name, n, vs, c["bw"]))
         elif k in ("pair", "button"):
             w, h = c["w"], c["h"]
             imgs = []
             for st in (0, 1):
                 bgc = crop_hi(tab, c["cx"] - w / 2, c["cy"] - h / 2, w, h)
-                bgc.alpha_composite(lamp_key(w * SS, h * SS, c["label"], bool(st), size=14))
+                bgc.alpha_composite(lamp_key(w * SS, h * SS, c["label"], bool(st), size=c.get("label_size", 17)))
                 imgs.append(final(bgc, w, h))
-            out.save(imgs[0], key + "_off.png")
-            out.save(imgs[1], key + "_on.png")
+            name = slug + "_" + key
+            out.save(imgs[0], name + "_off.png")
+            out.save(imgs[1], name + "_on.png")
             prev.alpha_composite(imgs[0].convert("RGBA"), (int(c["cx"] - w / 2), int(c["cy"] - h / 2)))
             kind = "toggle" if k == "pair" else "button"
             out.lines.append('%s cx=%d cy=%d label="" key=%s img=art/%s_off.png img_on=art/%s_on.png w=%d h=%d ns=0' %
-                             (kind, c["cx"], c["cy"] + Y_OFF, key, key, key, w, h))
+                             (kind, c["cx"], c["cy"] + Y_OFF, key, name, name, w, h))
         elif k == "keys":
             rects = c["rects"]
             x0 = min(r[0] for r in rects)
@@ -641,8 +649,8 @@ def render(tab, out):
                     kimg = lamp_key((rw + 2) * SS, rh * SS, c["labels"][j], j == i, size=c["label_size"])
                     bgc.alpha_composite(kimg, (int((rx - x0 - 1) * SS), int((ry - y0) * SS)))
                 f = final(bgc, x1 - x0, y1 - y0)
-                out.save(f, "%s_%d.png" % (key, i))
-                files.append("art/%s_%d.png" % (key, i))
+                out.save(f, "%s_%s_%d.png" % (slug, key, i))
+                files.append("art/%s_%s_%d.png" % (slug, key, i))
                 if i == 0:
                     prev.alpha_composite(f.convert("RGBA"), (int(x0), int(y0)))
             out.lines.append('picture x=%d y=%d w=%d h=%d key=%s files="%s"' % (x0, y0 + Y_OFF, x1 - x0, y1 - y0, key, ",".join(files)))
@@ -678,7 +686,7 @@ def tab_kit():
     t.panel(786, 344, 480, 270, "SCENES")
     t.keys("scene_view", 880, 440, ["A", "B"], 60, 56, name="PADS")
     t.knob("xfade", 1120, 450, 42, "CROSSFADER", bw=120)
-    t.keys("xfade_curve", 880, 555, ["SMOOTH", "SHARP"], 92, 44, name="CURVE", label_size=12)
+    t.keys("xfade_curve", 880, 555, ["SMOOTH", "SHARP"], 92, 44, name="CURVE", label_size=14)
     return t
 
 
@@ -702,7 +710,27 @@ def tab_pad():
     t.keys("sp_group", 1110, 402, ["A", "B", "C", "D"], 56, 52, name="GROUP")
     t.keys("sp_choke", 190, 556, ["OFF", "1", "2", "3", "4"], 62, 50, name="CHOKE")
     t.keys("sp_swap", 560, 556, ["OFF", "1", "2", "3", "4"], 62, 50, name="SWAP GROUP")
-    t.keys("sp_swapq", 940, 556, ["SLICE", "1/16", "BEAT", "BAR"], 78, 50, name="SWAP AT", label_size=12)
+    t.keys("sp_swapq", 940, 556, ["SLICE", "1/16", "BEAT", "BAR"], 78, 50, name="SWAP AT", label_size=14)
+    return t
+
+
+def tab_slice():
+    keys = ["pad", "sl_pick", "sl_sens", "sl_count", "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread"]
+    t = Tab("SLICE", [("SLICE", keys)], 707)
+    t.panel(14, 64, 420, 228, "SELECTED PAD")
+    t.knob("pad", 96, 186, 40, "PAD", value=False)
+    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE")
+    t.panel(446, 64, 820, 228, "SLICER")
+    t.knob("sl_sens", 540, 184, 38, "SENSITIVITY", bw=124)
+    t.keys("sl_count", 748, 184, ["4", "8", "16"], 80, 60, name="COUNT")
+    t.button("sl_auto", 990, 184, "AUTO\nSLICE", w=180, h=84)
+    t.button("sl_equal", 1170, 184, "EQUAL", w=150, h=84)
+    t.panel(14, 302, 1252, 312, "SLICES")
+    t.readout("sl_info", 530, 366, 900, 48, tsize=28)
+    t.keys("sl_pick", 530, 484, [str(i + 1) for i in range(16)], 116, 60, rows=2, label_size=20)
+    t.button("sl_reset", 1148, 400, "RESET", w=190, h=60)
+    t.button("sl_unslice", 1148, 476, "UNSLICE", w=190, h=60)
+    t.button("sl_spread", 1148, 556, "SPREAD", w=190, h=66, label_size=19)
     return t
 
 
@@ -779,7 +807,7 @@ def build():
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
     tiles = []
-    for make in (tab_kit, tab_pad, tab_sequencer, tab_fx, tab_macros, tab_mixer):
+    for make in (tab_kit, tab_pad, tab_slice, tab_sequencer, tab_fx, tab_macros, tab_mixer):
         tab = make()
         bg = render(tab, out)
         tiles.append(bg)

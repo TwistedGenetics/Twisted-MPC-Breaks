@@ -649,6 +649,107 @@
     "On"
    ],
    "default": 0
+  },
+  {
+   "key": "sl_sens",
+   "name": "Sensitivity",
+   "min": 0,
+   "max": 100,
+   "default": 50,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "sl_count",
+   "name": "Slice Count",
+   "options": [
+    "4 Slices",
+    "8 Slices",
+    "16 Slices"
+   ],
+   "default": 2
+  },
+  {
+   "key": "sl_pick",
+   "name": "Slice",
+   "options": [
+    "Slice 1",
+    "Slice 2",
+    "Slice 3",
+    "Slice 4",
+    "Slice 5",
+    "Slice 6",
+    "Slice 7",
+    "Slice 8",
+    "Slice 9",
+    "Slice 10",
+    "Slice 11",
+    "Slice 12",
+    "Slice 13",
+    "Slice 14",
+    "Slice 15",
+    "Slice 16"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sl_auto",
+   "name": "Auto Slice",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_equal",
+   "name": "Equal Slice",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_reset",
+   "name": "Reset Slices",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_unslice",
+   "name": "Unslice",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_spread",
+   "name": "Spread",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_info",
+   "name": "Slicer",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
   }
  ],
  "sections": [
@@ -748,6 +849,20 @@
     "grp_b_mute",
     "grp_c_mute",
     "grp_d_mute"
+   ]
+  },
+  {
+   "label": "Slice",
+   "keys": [
+    "sl_sens",
+    "sl_count",
+    "sl_pick",
+    "sl_auto",
+    "sl_equal",
+    "sl_reset",
+    "sl_unslice",
+    "sl_spread",
+    "sl_info"
    ]
   }
  ]
