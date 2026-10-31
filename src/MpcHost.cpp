@@ -1500,10 +1500,18 @@ namespace
                 root = atRoot;
                 roots = rootEntries;
             }
-            if (root) return;
+            if (root) { refreshDrives(); return; }   // on the drive list, BACK looks again (a stick just plugged in)
             for (const auto& r : roots)
                 if (r.file == here) { browse ({}, true, here); return; }
             browse (here.getParentDirectory(), false, here);
+        }
+
+        /** The drive list again, keeping the selection (drives come and go). */
+        void refreshDrives()
+        {
+            const auto keep = selectedEntry().file;
+            browse ({}, true, keep);
+            lastDriveScan = juce::Time::getMillisecondCounter();
         }
 
         void loadSelected (int pad)
@@ -1591,6 +1599,14 @@ namespace
                 }
                 else out.info = "PICK A DRIVE OR FOLDER";
             }
+
+            // on the drive list, look for drives every few seconds (a card or stick put in or taken out)
+            bool root;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                root = atRoot;
+            }
+            if (root && juce::Time::getMillisecondCounter() - lastDriveScan > 3000) refreshDrives();
 
             // audition the file the cursor came to rest on
             const uint32_t due = previewDue.load();
@@ -1740,6 +1756,7 @@ namespace
         std::array<std::atomic<bool>, tb::kNumPads> sliceWhenLoaded {};
         juce::ThreadPool pool { 1 };
         int releasePad = -1;            // message thread only
+        uint32_t lastDriveScan = 0;
         uint32_t releasePadAt = 0;
 
         struct Ticker final : juce::Timer
