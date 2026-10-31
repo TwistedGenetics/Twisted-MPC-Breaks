@@ -142,6 +142,17 @@ int main(void) {
     CHECK(fabsf(plain(a, "bank_active") - 2) < 0.05f, "BREAK BANK option 3 round-trips (%.2f)", plain(a, "bank_active"));
     set_plain(a, "bank_active", 0); run(a, 2);
 
+    /* 2a. hitting a pad selects it: every page follows the pad just played (unless FOLLOW HITS is off) */
+    set_plain(a, "pad", 1); run(a, 2);
+    note(a, 1, 38, 100); run(a, 20); note(a, 0, 38, 0); run(a, 20);
+    CHECK(lroundf(plain(a, "pad")) == 3, "note 38 (pad 3) selects pad 3 (%.0f)", plain(a, "pad"));
+    display(a, "pad", text);
+    CHECK(strncmp(text, "03", 2) == 0, "PAD readout follows ('%s')", text);
+    set_plain(a, "pad_follow", 0); run(a, 2);
+    note(a, 1, 36, 100); run(a, 20); note(a, 0, 36, 0); run(a, 20);
+    CHECK(lroundf(plain(a, "pad")) == 3, "FOLLOW HITS off: a hit leaves the selection (%.0f)", plain(a, "pad"));
+    set_plain(a, "pad_follow", 1); set_plain(a, "pad", 1); run(a, 2);
+
     /* 2b. the SLICE page on pad 1 (the factory jungle kit's break) */
     set_plain(a, "pad", 1); run(a, 2);
     set_plain(a, "sl_count", 1);                       /* 8 slices */

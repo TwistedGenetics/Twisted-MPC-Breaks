@@ -37,7 +37,7 @@ the Q-Links drive it.
 | FX | FX group A–D and its 16 performance effects |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |
 | MIXER | Group A–D levels and mutes |
-| SETUP | Which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
+| SETUP | FOLLOW HITS (a hit selects its pad); which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
 
 (The MPC shows five page tabs at a time; the `>` tab pages to the rest.)
 
@@ -51,6 +51,9 @@ the Q-Links drive it.
    the MPC appear as "MPC Kit 001", "MPC Kit 002"… and keep their samples with them.
 
 ### More
+- **The pad you hit is the pad you edit**: hitting a pad selects it, so PAD, SLICE, STEPS and SAMPLES all switch to
+  it (the sequencer playing doesn't move the selection). Turn it off with FOLLOW HITS on the SETUP page.
+- **Which control am I on?** The control you touch gets an amber frame; the data wheel then turns that one.
 - **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Why does pad 01 sound slowed down / pitched?** The factory kit's break is a 170 BPM loop with TEMPO SYNC on,
   so it is repitched to the MPC's tempo. Set the MPC to 170, or switch TEMPO SYNC off on the PAD page. The KIT
@@ -85,7 +88,7 @@ GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.1)
+## Known limits (1.2)
 - Untested on hardware: CPU load, how smoothly the MPC redraws the slice screen and the STEPS playhead, and the
   skin's readability need a device check.
 - A project remembers where each pad's sample lives (a drive, a folder): keep the card or stick in, or SAVE KIT

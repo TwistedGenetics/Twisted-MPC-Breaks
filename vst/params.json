@@ -749,7 +749,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_file",
@@ -2562,6 +2563,15 @@
    "default": 0,
    "display": "string",
    "type": "readout"
+  },
+  {
+   "key": "pad_follow",
+   "name": "Pad Follows Hits",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
   }
  ],
  "sections": [
@@ -2911,6 +2921,12 @@
     "kit_prev",
     "kit_next",
     "kit_info"
+   ]
+  },
+  {
+   "label": "Follow",
+   "keys": [
+    "pad_follow"
    ]
   }
  ]

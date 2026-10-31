@@ -131,7 +131,7 @@ section("Slice", [
     trig("sl_reset", "Reset Slices"),
     trig("sl_unslice", "Unslice"),
     trig("sl_spread", "Spread"),
-    readout("sl_info", "Slicer"),
+    dict(readout("sl_info", "Slicer"), poll=False),   # 1.1: no longer on the skin (the screen's lines replace it)
 ])
 
 # ---- 1.0: SAMPLES (your own breaks from the SD card) ------------------------------------------
@@ -200,6 +200,9 @@ section("Sound", [
     trig("kit_next", "Next Kit"),
     readout("kit_info", "Kit Info"),
 ])
+
+# ---- 1.2: hitting a pad selects it (every page then shows that pad) --------------------------------------
+section("Follow", [opts("pad_follow", "Pad Follows Hits", ONOFF, 1)])
 
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

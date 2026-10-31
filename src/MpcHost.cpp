@@ -197,7 +197,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, padFollow, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -242,6 +242,7 @@ namespace
                 else if (std::strcmp (k, "sl_count") == 0)     in.kind = Kind::slCount;
                 else if (std::strcmp (k, "sl_pick") == 0)      in.kind = Kind::padParam;
                 else if (std::strcmp (k, "smp_file") == 0)     own (Own::smpFile);
+                else if (std::strcmp (k, "pad_follow") == 0)   own (Own::padFollow);
                 else if (std::strcmp (k, "smp_slice") == 0)    own (Own::smpSlice);
                 else if (std::strcmp (k, "smp_audition") == 0) own (Own::smpAudition);
                 else if (std::strcmp (k, "st_pos") == 0)       own (Own::stPos);
@@ -334,6 +335,17 @@ namespace
         {
             if (len <= 0 || len > 3) return;
             midi.addEvent (msg, len, 0);
+            // A pad hit selects that pad, so every page shows the pad just played (not while LEARN waits for a note).
+            if (len == 3 && (msg[0] & 0xf0) == 0x90 && msg[2] > 0 && padFollow.load (std::memory_order_relaxed))
+            {
+                auto& engine = proc->getEngine();
+                if (engine.getNoteLearnPad() < 0)
+                    if (const int pad = engine.padForNote (msg[1]); pad >= 0)
+                    {
+                        selectedPad.store (pad);
+                        proc->getBridge().selectedPad.store (pad);
+                    }
+            }
         }
 
         void songPos (double ppq, double tempo, int isPlaying, int)
@@ -1229,6 +1241,7 @@ namespace
             switch (in.own)
             {
                 case Own::smpFile:     return (float) cursor.load();
+                case Own::padFollow:   return padFollow.load() ? 1.0f : 0.0f;
                 case Own::smpSlice:    return smpSliceOnLoad.load() ? 1.0f : 0.0f;
                 case Own::smpAudition: return smpAudition.load() ? 1.0f : 0.0f;
                 case Own::stPos:       return (float) (proc->getBridge().seqStep.load() + 1);
@@ -1253,6 +1266,7 @@ namespace
             switch (in.own)
             {
                 case Own::smpFile:     moveCursor (juce::roundToInt (v), false); return;
+                case Own::padFollow:   padFollow.store (v > 0.5f); return;
                 case Own::smpSlice:    smpSliceOnLoad.store (v > 0.5f); return;
                 case Own::smpAudition: smpAudition.store (v > 0.5f); if (v < 0.5f) stopPreview(); return;
                 case Own::stPos:       return;
@@ -1722,7 +1736,7 @@ namespace
         int    framesSincePos = 0;
 
         std::atomic<int> selectedPad { 0 }, fxGroup { 0 }, kitIndex { 0 };
-        std::atomic<bool> rescanQueued { false };
+        std::atomic<bool> rescanQueued { false }, padFollow { true };
         int lastPad = 0, lastGroup = 0;
 
         std::array<std::atomic<int>, NPARAMS>  triggerHold {};

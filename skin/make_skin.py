@@ -1018,15 +1018,16 @@ def tab_steps():
 
 
 def tab_setup():
-    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn"])], 1010)
+    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn", "pad_follow"])], 1010)
     t.panel(14, 64, 1252, 270, "PAD NOTES")
     t.knob("pad", 104, 196, 40, "PAD", value=False)
     t.keys("note_base", 540, 206, ["36-51\nC1", "37-52\nMPC", "48-63\nC2", "CUSTOM"], 150, 84, name="WHICH NOTES PLAY PADS 1-16")
     t.button("note_learn", 1060, 206, "LEARN\nPAD NOTE", w=230, h=90, name="SELECTED PAD")
     t.panel(14, 344, 1252, 270, "MIDI IN")
     t.readout("note_info", 640, 430, 1100, 64, tsize=30)
-    t.tag(640, 540, ["HIT A PAD ON THE MPC: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
-                     "WRONG PAD? TRY THE OTHER NOTE LAYOUTS, OR PICK A PAD AND PRESS LEARN, THEN HIT IT."], 860, 56)
+    t.tag(560, 548, ["HIT A PAD ON THE MPC: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
+                     "WRONG PAD? TRY THE OTHER NOTE LAYOUTS, OR PICK A PAD AND PRESS LEARN, THEN HIT IT."], 780, 56)
+    t.toggle("pad_follow", 1140, 548, "FOLLOW\nHITS", w=180, h=76, name="PAD SELECT")
     return t
 
 
