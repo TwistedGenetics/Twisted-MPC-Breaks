@@ -853,7 +853,15 @@ def tab_frames():
             n, lit = (v - 1) % 16 + 1, v > 16
             d = ImageDraw.Draw(im)
             d.rounded_rectangle((0, 2 * SS, w - SS, h - 2 * SS), radius=2 * SS, fill=AMBER if lit else (150, 98, 28))
-            d.text((w / 2, h / 2), str(n), font=font(12 if n < 10 else 10), fill=(26, 14, 2), anchor="mm")
+            if n < 10:
+                d.text((w / 2, h / 2 + SS), str(n), font=font(15), fill=(26, 14, 2), anchor="mm")
+            else:   # two digits squeezed into the 16 px tab, still bold and tall
+                tw = 2 * w
+                big = Image.new("RGBA", (tw, h), (0, 0, 0, 0))
+                ImageDraw.Draw(big).text((tw / 2, h / 2 + SS), str(n), font=font(15), fill=(26, 14, 2, 255), anchor="mm")
+                big = big.crop(big.getbbox()) if big.getbbox() else big
+                big = big.resize((w - 2 * SS, big.height), Image.LANCZOS)
+                im.paste(big, (SS, (h - big.height) // 2 + SS), big)
         frames.append(im.resize((COL_W, TAB_H), Image.LANCZOS))
     return frames
 
