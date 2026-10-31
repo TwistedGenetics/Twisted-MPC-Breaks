@@ -750,6 +750,409 @@
    "default": 0,
    "display": "string",
    "type": "readout"
+  },
+  {
+   "key": "smp_file",
+   "name": "Sample",
+   "min": 0,
+   "max": 998,
+   "default": 0,
+   "display": "int",
+   "dynamic_display": true,
+   "nudge_pct": 10
+  },
+  {
+   "key": "smp_load",
+   "name": "Load Sample",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_clear",
+   "name": "Clear Pad",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_slice",
+   "name": "Slice On Load",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
+  },
+  {
+   "key": "smp_info",
+   "name": "Sample Browser",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "st_01",
+   "name": "Step 1",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_02",
+   "name": "Step 2",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_03",
+   "name": "Step 3",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_04",
+   "name": "Step 4",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_05",
+   "name": "Step 5",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_06",
+   "name": "Step 6",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_07",
+   "name": "Step 7",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_08",
+   "name": "Step 8",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_09",
+   "name": "Step 9",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_10",
+   "name": "Step 10",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_11",
+   "name": "Step 11",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_12",
+   "name": "Step 12",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_13",
+   "name": "Step 13",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_14",
+   "name": "Step 14",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_15",
+   "name": "Step 15",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_16",
+   "name": "Step 16",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_17",
+   "name": "Step 17",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_18",
+   "name": "Step 18",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_19",
+   "name": "Step 19",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_20",
+   "name": "Step 20",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_21",
+   "name": "Step 21",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_22",
+   "name": "Step 22",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_23",
+   "name": "Step 23",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_24",
+   "name": "Step 24",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_25",
+   "name": "Step 25",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_26",
+   "name": "Step 26",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_27",
+   "name": "Step 27",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_28",
+   "name": "Step 28",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_29",
+   "name": "Step 29",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_30",
+   "name": "Step 30",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_31",
+   "name": "Step 31",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_32",
+   "name": "Step 32",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "st_clear",
+   "name": "Clear Steps",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "st_info",
+   "name": "Steps",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "st_pos",
+   "name": "Playhead",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "note_base",
+   "name": "Pad Notes",
+   "options": [
+    "36-51 (C1)",
+    "37-52 (MPC)",
+    "48-63 (C2)",
+    "Custom"
+   ],
+   "default": 0
+  },
+  {
+   "key": "note_learn",
+   "name": "Learn Pad Note",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "note_info",
+   "name": "MIDI In",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "kit_save",
+   "name": "Save Kit",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
   }
  ],
  "sections": [
@@ -863,6 +1266,65 @@
     "sl_unslice",
     "sl_spread",
     "sl_info"
+   ]
+  },
+  {
+   "label": "Samples",
+   "keys": [
+    "smp_file",
+    "smp_load",
+    "smp_clear",
+    "smp_slice",
+    "smp_info"
+   ]
+  },
+  {
+   "label": "Steps",
+   "keys": [
+    "st_01",
+    "st_02",
+    "st_03",
+    "st_04",
+    "st_05",
+    "st_06",
+    "st_07",
+    "st_08",
+    "st_09",
+    "st_10",
+    "st_11",
+    "st_12",
+    "st_13",
+    "st_14",
+    "st_15",
+    "st_16",
+    "st_17",
+    "st_18",
+    "st_19",
+    "st_20",
+    "st_21",
+    "st_22",
+    "st_23",
+    "st_24",
+    "st_25",
+    "st_26",
+    "st_27",
+    "st_28",
+    "st_29",
+    "st_30",
+    "st_31",
+    "st_32",
+    "st_clear",
+    "st_info",
+    "st_pos"
+   ]
+  },
+  {
+   "label": "Setup",
+   "keys": [
+    "note_base",
+    "note_learn",
+    "note_info",
+    "kit_save"
    ]
   }
  ]

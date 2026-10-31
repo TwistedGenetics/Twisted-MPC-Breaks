@@ -28,22 +28,36 @@ the Q-Links drive it.
 
 | Page | What's on it |
 |---|---|
-| KIT | Kit picker + LOAD, status line, master level, limiter, scene A/B, crossfader |
+| KIT | Kit picker + LOAD KIT / SAVE KIT, status line, master level, limiter, scene A/B, crossfader |
 | PAD | The selected pad: gain, pitch, pan, mode, slice, reverse, choke, start/end, stretch, character, SWAP, group, velocity |
+| SAMPLES | Your own breaks from the SD card or a USB drive: turn SAMPLE to browse, LOAD puts it on the selected pad (and slices it if SLICE ON LOAD is lit), CLEAR PAD |
 | SLICE | The selected pad's slicer: sensitivity, count (4 / 8 / 16), AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD (each slice onto its own pad), and 16 keys to pick the slice the pad plays |
+| STEPS | The selected pad's 32 steps as lamp keys, with a running playhead; length, step size, run, CLEAR |
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |
 | MIXER | Group A–D levels and mutes |
+| SETUP | Which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
 
-- **Pads**: MIDI notes 36–51 play pads 01–16 (Twisted Breaks' Drum Rack layout); notes 60–75 play the FX
-  group's effects. Which notes the MPC's own pads send on a plugin track still needs checking on a device.
+(The MPC shows five page tabs at a time; the `>` tab pages to the rest.)
+
+### First time on the MPC
+1. Open the plugin and hit an MPC pad. Look at **SETUP**: the MIDI IN line says which note arrived and which
+   pad played. If it's the wrong pad, press another note layout (try **37-52 MPC**), or pick a pad, press
+   **LEARN PAD NOTE** and hit the MPC pad you want for it.
+2. Your own breaks: make a folder called **`Twisted Breaks`** (or `Breaks`) at the top of the SD card or a USB
+   drive and put WAV / AIFF / FLAC files in it (sub-folders are fine). On **SAMPLES**, turn SAMPLE, then LOAD.
+3. Program it on **STEPS**, shape it on **SLICE** and **PAD**, then **SAVE KIT** on the KIT page. Kits saved on
+   the MPC appear as "MPC Kit 001", "MPC Kit 002"… and keep their samples with them.
+
+### More
+- **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Timing** follows the MPC's transport: the sequencer, synced loops, SWAP hand-offs and quantised FX lock to
   the MPC's tempo and song position.
-- **Your own kits**: save a kit on the Mac (Twisted Breaks' preset browser, `.tbkit`, samples included) and copy
-  it to `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Kits/` on the MPC. It shows in the
-  KIT list as soon as you turn the KIT selector. The installer keeps the `data` folder when you update the plugin.
-- **Projects**: everything is saved in the MPC project (pads, slices, patterns, snapshots, FX).
+- **Kits from the Mac**: save a kit in Twisted Breaks' preset browser (`.tbkit`, samples included) and copy it
+  to `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Kits/` on the MPC. It shows in the KIT
+  list as soon as you turn the KIT knob. The installer keeps the `data` folder when you update the plugin.
+- **Projects**: everything is saved in the MPC project (pads, slices, steps, patterns, snapshots, FX, pad notes).
 
 ## How it works
 - `src/MpcHost.cpp` hosts the Twisted Breaks processor behind the engine interface of the community toolkit
@@ -61,15 +75,14 @@ the Q-Links drive it.
 ## Build
 GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 - **Offline tests**: the plugin for x86 under ASan/UBSan, driven by the toolkit's host test and
-  `tests/tbm_test.c` (kits, pads, the pattern from the song position, state save/restore, several instances).
+  `tests/tbm_test.c` (kits, pads, slicing, the sample browser, steps, pad notes + LEARN, SAVE KIT, the pattern from the song position, state save/restore, several instances).
 - **MPC plugin**: cross-compiled for armv7 (glibc 2.27, GCC 14), checked (exports, glibc, libraries), skin built,
   packaged as the installer zip. Builds of `main` are published under Releases.
 
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (first version)
-- Untested on hardware: pad note mapping, CPU load and the skin need a device check.
-- Breaks load from kits only (no per-pad sample browser yet).
+## Known limits (1.0)
+- Untested on hardware: CPU load, how the MPC redraws the STEPS playhead, and the skin's readability need a device check.
 - Sample paths in a saved project point into the plugin's `data` folder, so a project moved to another MPC
   needs that MPC to have the same kits installed.

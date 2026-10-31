@@ -89,6 +89,9 @@ static void run(AEffect *a, int blocks) {
         }
     }
 }
+/* real time for the plugin's own threads (its message thread refreshes the readouts every 100 ms) */
+static void settle(AEffect *a, int ms) { for (int t = 0; t < ms; t += 20) { run(a, 2); usleep(20000); } }
+
 static void note(AEffect *a, int on, int key, int vel) {
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {(unsigned char)(on ? 0x90 : 0x80), (unsigned char)key, (unsigned char)vel, 0}, {0}};
     EV ev = {1, 0, {&m}};
@@ -166,6 +169,71 @@ int main(void) {
     note(a, 1, 37, 110); peak = 0; run(a, 40); note(a, 0, 37, 0); run(a, 40);
     CHECK(peak > 0.01, "and pad 2 plays its slice (peak %.3f)", peak);
     set_plain(a, "pad", 1); run(a, 2);
+
+    /* 2c. STEPS: step keys edit the selected pad's lane; CLEAR empties it */
+    set_plain(a, "pad", 12); run(a, 2);
+    set_plain(a, "st_01", 1); set_plain(a, "st_05", 1); set_plain(a, "st_09", 1); run(a, 2);
+    set_plain(a, "pad", 11); run(a, 2);
+    float other = plain(a, "st_01");
+    set_plain(a, "pad", 12); run(a, 2);
+    CHECK(plain(a, "st_05") > 0.5f && plain(a, "st_02") < 0.5f && other < 0.5f,
+          "step keys follow the selected pad (pad 12 step 5 %.0f, step 2 %.0f, pad 11 step 1 %.0f)", plain(a, "st_05"), plain(a, "st_02"), other);
+    settle(a, 300);
+    display(a, "st_info", text);
+    CHECK(strstr(text, "3 STEPS") != NULL, "STEPS readout counts them ('%s')", text);
+    a->setP(a, idx("st_clear"), 1); run(a, 4); a->setP(a, idx("st_clear"), 0); run(a, 2);
+    CHECK(plain(a, "st_01") < 0.5f && plain(a, "st_05") < 0.5f, "CLEAR empties the lane");
+    set_plain(a, "pad", 1); run(a, 2);
+
+    /* 2d. SETUP: pad notes 37-52 (MPC's own pad layout), then LEARN */
+    set_plain(a, "note_base", 1); run(a, 2);
+    CHECK(fabsf(plain(a, "note_base") - 1) < 0.05f, "PAD NOTES 37-52 set (%.0f)", plain(a, "note_base"));
+    note(a, 1, 37, 110); peak = 0; run(a, 40); note(a, 0, 37, 0); run(a, 40);
+    CHECK(peak > 0.01, "note 37 now plays pad 1 (peak %.3f)", peak);
+    settle(a, 300);
+    display(a, "note_info", text);
+    CHECK(strstr(text, "LAST NOTE 37") && strstr(text, "PAD 01"), "MIDI IN readout: '%s'", text);
+    set_plain(a, "pad", 3); run(a, 2);
+    a->setP(a, idx("note_learn"), 1); run(a, 4); a->setP(a, idx("note_learn"), 0);
+    note(a, 1, 70, 100); run(a, 4); note(a, 0, 70, 0); run(a, 4);
+    CHECK(fabsf(plain(a, "note_base") - 3) < 0.05f, "LEARN gave pad 3 note 70: PAD NOTES reads Custom");
+    note(a, 1, 70, 100); run(a, 4); note(a, 0, 70, 0); run(a, 4);
+    settle(a, 300);
+    display(a, "note_info", text);
+    CHECK(strstr(text, "PAD 03") != NULL, "note 70 plays pad 3 ('%s')", text);
+    set_plain(a, "note_base", 0); run(a, 2);
+    CHECK(fabsf(plain(a, "note_base")) < 0.05f, "back to 36-51");
+    set_plain(a, "pad", 1); run(a, 2);
+
+    /* 2e. SAMPLES: a WAV in the Samples folder, loaded onto pad 9 and sliced */
+    system("mkdir -p data/Samples/Jungle && cp 'data/Library/Factory Sounds/TB Break 170.wav' data/Samples/Jungle/my-break.wav");
+    settle(a, 3200);                                   /* turning the selector rescans when the last scan is over 3 s old */
+    set_plain(a, "smp_file", 1); run(a, 2); set_plain(a, "smp_file", 0);
+    for (int i = 0; i < 100; i++) { run(a, 4); usleep(20000); display(a, "smp_info", text); if (strstr(text, "MY-BREAK")) break; }
+    printf("     sample browser: '%s'\n", text);
+    CHECK(strstr(text, "MY-BREAK.WAV") != NULL, "the browser lists data/Samples/Jungle/my-break.wav");
+    set_plain(a, "pad", 9); set_plain(a, "smp_slice", 1); run(a, 2);
+    a->setP(a, idx("smp_load"), 1); run(a, 4); a->setP(a, idx("smp_load"), 0);
+    for (int i = 0; i < 200; i++) { run(a, 4); usleep(30000); display(a, "sl_info", text); if (strstr(text, "PAD 09") && strstr(text, "SLICES") && !strstr(text, "NOT")) break; }
+    printf("     pad 9 after LOAD: '%s'\n", text);
+    CHECK(strstr(text, "PAD 09") && strstr(text, "SLICES") != NULL && strstr(text, "NOT") == NULL, "LOAD put it on pad 9 and sliced it ('%s')", text);
+    display(a, "pad", text);
+    CHECK(strstr(text, "MY-BREAK") != NULL, "PAD readout names it ('%s')", text);
+    note(a, 1, 44, 110); peak = 0; run(a, 40); note(a, 0, 44, 0); run(a, 40);
+    CHECK(peak > 0.01, "pad 9 (note 44) plays it (peak %.3f)", peak);
+    a->setP(a, idx("smp_clear"), 1); run(a, 4); a->setP(a, idx("smp_clear"), 0);
+    for (int i = 0; i < 20; i++) { run(a, 4); usleep(20000); }
+    note(a, 1, 44, 110); peak = 0; run(a, 40); note(a, 0, 44, 0); run(a, 40);
+    CHECK(peak < 1e-4, "CLEAR PAD empties it (peak %.5f)", peak);
+    set_plain(a, "pad", 1); run(a, 2);
+
+    /* 2f. SAVE KIT: a new kit in the list, and it loads */
+    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0);
+    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "SAVED")) break; }
+    printf("     after SAVE KIT: '%s'\n", text);
+    CHECK(strstr(text, "SAVED MPC KIT") != NULL, "SAVE KIT reports it ('%s')", text);
+    display(a, "kit", text2);
+    CHECK(strstr(text2, "MPC Kit") != NULL, "KIT selector shows the saved kit ('%s')", text2);
 
     /* 3. the kit's pattern from MPC's transport */
     set_plain(a, "seq_run", 1);

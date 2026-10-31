@@ -433,6 +433,18 @@ class Tab:
         self.vfd_window(cx, cy, w, h)
         self.controls.append(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize))
 
+    def lamp_row(self, key, cx, cy, n, pitch, first, count):
+        """A row of small amber lamps, one lit by a parameter (0 = none): steps first .. first + count - 1
+        of a playhead that runs 1..n. Unlit lamps are drawn into the tab; the meter's frames add the lit one."""
+        d = self.draw
+        x0 = cx - pitch * (count - 1) / 2
+        for i in range(count):
+            x = x0 + i * pitch
+            d.ellipse(((x - 5) * SS, (cy - 5) * SS, (x + 5) * SS, (cy + 5) * SS), fill=(12, 10, 8))
+            d.ellipse(((x - 4) * SS, (cy - 4) * SS, (x + 4) * SS, (cy + 4) * SS), fill=AMBER_DIM)
+        self.controls.append(dict(kind="meter", key=key, cx=cx, cy=cy, w=int(pitch * count), h=22, n=n, pitch=pitch,
+                                  first=first, count=count))
+
     def tag(self, cx, cy, lines, w, h, angle=-2.0):
         """A yellowed paper tag taped on (instructions)."""
         t = Image.new("RGBA", (int(w * SS), int(h * SS)), PAPER + (255,))
@@ -658,6 +670,27 @@ def render(tab, out):
             rows = " rows=%d" % c["rows"] if c["rows"] > 1 else ""
             out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d%s img=art/clear.png img_on=art/clear.png' %
                              (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"], rows))
+        elif k == "meter":
+            w, h, n = c["w"], c["h"], c["n"]
+            frames = []
+            for v in range(n + 1):        # frame v: playhead on step v (0 = stopped)
+                fr = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+                i = v - c["first"]
+                if v > 0 and 0 <= i < c["count"]:
+                    x = (c["pitch"] / 2 + i * c["pitch"]) * SS
+                    y = h * SS / 2
+                    glow = Image.new("RGBA", fr.size, (0, 0, 0, 0))
+                    ImageDraw.Draw(glow).ellipse((x - 12 * SS, y - 12 * SS, x + 12 * SS, y + 12 * SS), fill=AMBER + (170,))
+                    fr.alpha_composite(glow.filter(ImageFilter.GaussianBlur(5 * SS)))
+                    ImageDraw.Draw(fr).ellipse((x - 5 * SS, y - 5 * SS, x + 5 * SS, y + 5 * SS), fill=(255, 214, 120, 255))
+                frames.append(fr.resize((w, h), Image.LANCZOS))
+            stp = Image.new("RGBA", (w, h * len(frames)), (0, 0, 0, 0))
+            for i, f in enumerate(frames):
+                stp.paste(f, (0, i * h))
+            name = "%s_%s_%d" % (slug, key, c["first"])
+            out.save(stp, name + ".png")
+            out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/%s.png frames=%d' %
+                             (c["cx"], c["cy"] + Y_OFF, w, h, key, name, len(frames)))
         elif k == "readout":
             out.lines.append('readout cx=%d cy=%d w=%d h=%d label="" key=%s box=0 tsize=%d tcolor=%s talign=center' %
                              (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, c["tsize"], VFD_HEX))
@@ -672,14 +705,15 @@ def render(tab, out):
 #  The tabs
 # =================================================================================================
 def tab_kit():
-    t = Tab("KIT", [("KIT", ["kit", "kit_load", "master_gain", "master_limiter", "scene_view", "xfade", "xfade_curve"])], 101)
+    t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_save", "master_gain", "master_limiter", "scene_view", "xfade", "xfade_curve"])], 101)
     t.panel(14, 64, 760, 270, "KIT SELECT")
     t.knob("kit", 104, 196, 42, "KIT", bw=112, value=False)
     t.readout("kit", 450, 170, 500, 60, tsize=30, name="LOADED KIT  /  SELECTED KIT")
-    t.button("kit_load", 450, 270, "LOAD KIT", w=200, h=56)
+    t.button("kit_load", 340, 270, "LOAD KIT", w=200, h=56)
+    t.button("kit_save", 580, 270, "SAVE KIT", w=200, h=56)
     t.panel(14, 344, 760, 270, "STATUS")
     t.readout("status", 394, 440, 700, 52, tsize=22, name="PLANT STATUS")
-    t.tag(250, 545, ["YOUR KITS: SAVE A .TBKIT ON THE MAC, COPY IT TO", "Synths/.../Twisted Breaks/data/Presets/Kits", "THEN TURN THE KIT KNOB."], 430, 72)
+    t.tag(250, 545, ["MAC KITS: COPY .TBKIT FILES TO", "Synths/.../Twisted Breaks/data/Presets/Kits", "SAVE KIT STORES THIS KIT AS \"MPC KIT 001\"..."], 430, 72)
     t.panel(786, 64, 480, 270, "MASTER")
     t.knob("master_gain", 900, 196, 42, "LEVEL", bw=120)
     t.toggle("master_limiter", 1120, 196, "LIMITER", w=150, h=62)
@@ -731,6 +765,61 @@ def tab_slice():
     t.button("sl_reset", 1148, 400, "RESET", w=190, h=60)
     t.button("sl_unslice", 1148, 476, "UNSLICE", w=190, h=60)
     t.button("sl_spread", 1148, 556, "SPREAD", w=190, h=66, label_size=19)
+    return t
+
+
+def selected_pad_panel(t):
+    t.panel(14, 64, 420, 228, "SELECTED PAD")
+    t.knob("pad", 96, 186, 40, "PAD", value=False)
+    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE")
+
+
+def tab_samples():
+    t = Tab("SAMPLES", [("SAMPLES", ["pad", "smp_file", "smp_load", "smp_clear", "smp_slice"])], 808)
+    selected_pad_panel(t)
+    t.panel(446, 64, 820, 228, "LOAD ONTO THE PAD")
+    t.button("smp_load", 610, 184, "LOAD", w=230, h=90, label_size=24)
+    t.toggle("smp_slice", 860, 184, "SLICE\nON LOAD", w=170, h=90)
+    t.button("smp_clear", 1100, 184, "CLEAR\nPAD", w=170, h=90)
+    t.panel(14, 302, 1252, 312, "SAMPLE BROWSER")
+    t.knob("smp_file", 120, 440, 52, "SAMPLE", value=False)
+    t.readout("smp_info", 720, 420, 1040, 64, tsize=28)
+    t.tag(700, 540, ["PUT YOUR BREAKS (WAV / AIFF / FLAC) IN A FOLDER CALLED  Twisted Breaks", "AT THE TOP OF YOUR SD CARD OR USB DRIVE (SUB-FOLDERS ARE FINE).",
+                     "TURN THE SAMPLE KNOB TO LOOK AGAIN."], 760, 72)
+    return t
+
+
+def tab_steps():
+    t = Tab("STEPS", [("STEPS", ["pad", "seq_length", "seq_res", "seq_run", "st_clear"])], 909)
+    t.panel(14, 64, 1252, 196, "LANE")
+    t.knob("pad", 90, 170, 38, "PAD", value=False)
+    t.readout("pad", 280, 162, 230, 52, tsize=24, name="PAD  /  SAMPLE")
+    t.knob("seq_length", 520, 162, 36, "LENGTH", bw=110)
+    t.keys("seq_res", 730, 176, ["1/8", "1/16", "1/32"], 70, 56, name="STEP")
+    t.toggle("seq_run", 940, 176, "RUN", w=130, h=60, name="SEQUENCER")
+    t.button("st_clear", 1140, 176, "CLEAR\nSTEPS", w=170, h=76)
+    t.panel(14, 270, 1252, 344, "STEPS")
+    t.readout("st_info", 640, 318, 900, 44, tsize=24)
+    pitch = 74
+    for row in range(2):
+        cy_keys = 418 + row * 132
+        t.lamp_row("st_pos", 640, cy_keys - 56, 32, pitch, 1 + 16 * row, 16)
+        for i in range(16):
+            n = row * 16 + i + 1
+            t.toggle("st_%02d" % n, int(640 - pitch * 7.5 + i * pitch), cy_keys, str(n), w=70, h=84, label_size=19)
+    return t
+
+
+def tab_setup():
+    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn"])], 1010)
+    t.panel(14, 64, 1252, 270, "PAD NOTES")
+    t.knob("pad", 104, 196, 40, "PAD", value=False)
+    t.keys("note_base", 540, 206, ["36-51\nC1", "37-52\nMPC", "48-63\nC2", "CUSTOM"], 150, 84, name="WHICH NOTES PLAY PADS 1-16")
+    t.button("note_learn", 1060, 206, "LEARN\nPAD NOTE", w=230, h=90, name="SELECTED PAD")
+    t.panel(14, 344, 1252, 270, "MIDI IN")
+    t.readout("note_info", 640, 430, 1100, 64, tsize=30)
+    t.tag(640, 540, ["HIT A PAD ON THE MPC: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
+                     "WRONG PAD? TRY THE OTHER NOTE LAYOUTS, OR PICK A PAD AND PRESS LEARN, THEN HIT IT."], 860, 56)
     return t
 
 
@@ -807,7 +896,7 @@ def build():
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
     tiles = []
-    for make in (tab_kit, tab_pad, tab_slice, tab_sequencer, tab_fx, tab_macros, tab_mixer):
+    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_steps, tab_sequencer, tab_fx, tab_macros, tab_mixer, tab_setup):
         tab = make()
         bg = render(tab, out)
         tiles.append(bg)

@@ -134,5 +134,28 @@ section("Slice", [
     readout("sl_info", "Slicer"),
 ])
 
+# ---- 1.0: SAMPLES (your own breaks from the SD card) ------------------------------------------
+section("Samples", [
+    num("smp_file", "Sample", 0, 998, 0, display="int", dynamic_display=True, nudge_pct=10),
+    trig("smp_load", "Load Sample"),
+    trig("smp_clear", "Clear Pad"),
+    opts("smp_slice", "Slice On Load", ONOFF, 1),
+    readout("smp_info", "Sample Browser"),
+])
+
+# ---- 1.0: STEPS (the selected pad's 32 steps) ---------------------------------------------------
+section("Steps", [opts("st_%02d" % (i + 1), "Step %d" % (i + 1), ONOFF, 0) for i in range(32)]
+        + [trig("st_clear", "Clear Steps"),
+           readout("st_info", "Steps"),
+           num("st_pos", "Playhead", 0, 32, 0, display="int")])
+
+# ---- 1.0: SETUP (which notes play the pads) and SAVE KIT ----------------------------------------
+section("Setup", [
+    opts("note_base", "Pad Notes", ["36-51 (C1)", "37-52 (MPC)", "48-63 (C2)", "Custom"], 0),
+    trig("note_learn", "Learn Pad Note"),
+    readout("note_info", "MIDI In"),
+    trig("kit_save", "Save Kit"),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

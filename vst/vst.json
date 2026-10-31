@@ -10,7 +10,7 @@
     "MODULE_SUBDIR": "\"data\"",
     "HAS_SONG_POS": 1,
     "SAMPLE_ACCURATE": 1,
-    "PARAM_TEXT_MAX": 32
+    "PARAM_TEXT_MAX": 96
   },
   "cc": false,
   "build": {

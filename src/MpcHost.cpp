@@ -29,6 +29,8 @@
 #include "Core/FxDefs.h"
 
 #include <atomic>
+#include <cctype>
+#include <functional>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -177,6 +179,8 @@ namespace
                 infoTimer.startTimer (100);
                 refreshInfo();
             });
+            samplesDir().createDirectory();
+            startSampleScan();
 
             buffer.setSize (2, kBlock);
             midi.ensureSize (2048);
@@ -195,6 +199,8 @@ namespace
 
         ~Host() override
         {
+            scanAbort = true;
+            if (scanThread.joinable()) scanThread.join();
             MessageThread::run ([this]
             {
                 infoTimer.stopTimer();
@@ -321,6 +327,9 @@ namespace
             {
                 if (v > 0.5f) slicerAction (key, selectedPad.load());
             }
+            else if (setOwnParam (key, idx, v))
+            {
+            }
             else if (auto* p = resolve (key))
             {
                 p->setValueNotifyingHost (p->convertTo0to1 (toPlain (idx, p, v)));
@@ -338,6 +347,16 @@ namespace
             if (std::strcmp (key, "sl_info") == 0) return putCached (slInfoBuf, buf, len);
             if (std::strcmp (key, "sl_sens") == 0) return put (buf, len, juce::String (juce::roundToInt (slSens.load() * 100.0f)));
             if (std::strcmp (key, "sl_count") == 0) return put (buf, len, juce::String (slCountOption.load()));
+            if (std::strcmp (key, "smp_info") == 0) return putCached (smpInfoBuf, buf, len);
+            if (std::strcmp (key, "st_info") == 0) return putCached (stInfoBuf, buf, len);
+            if (std::strcmp (key, "note_info") == 0) return putCached (noteInfoBuf, buf, len);
+            if (std::strcmp (key, "smp_file_display") == 0) return put (buf, len, sampleName (smpIndex.load()));
+            if (const int ownIdx = paramIndex (key); ownIdx >= 0 && isOwnKey (key))
+            {
+                char num[32];
+                std::snprintf (num, sizeof num, "%g", ownValue (ownIdx));
+                return put (buf, len, num);
+            }
             if (std::strcmp (key, "kit") == 0) return put (buf, len, juce::String (kitIndex.load()));
             if (std::strcmp (key, "kit_display") == 0) return put (buf, len, kitName (kitIndex.load()));
             if (startsWith (key, "kit:")) return put (buf, len, kitName (std::atoi (key + 4)));
@@ -416,6 +435,13 @@ namespace
             if (std::strcmp (key, "kit") == 0) return (float) kitIndex.load();
             if (std::strcmp (key, "sl_sens") == 0) return slSens.load();
             if (std::strcmp (key, "sl_count") == 0) return (float) slCountOption.load() / 2.0f;
+            if (isOwnKey (key))
+            {
+                const auto& pp = PARAMS[i];
+                const float v = ownValue (i);
+                if (pp.nopts > 1) return v / (float) (pp.nopts - 1);
+                return pp.max > pp.min ? (v - pp.min) / (pp.max - pp.min) : 0.0f;
+            }
             if (auto* p = resolve (key)) return p->getValue();
             return 0.0f;
         }
@@ -458,7 +484,7 @@ namespace
                 if (PARAMS[i].string_display) continue;   // readouts: the wrapper polls their text
                 const char* key = PARAMS[i].key;
                 const float now = currentNorm (i);
-                const bool follows = (padMoved && (startsWith (key, "sp_") || startsWith (key, "sl_")))
+                const bool follows = (padMoved && (startsWith (key, "sp_") || startsWith (key, "sl_") || startsWith (key, "st_")))
                                      || (groupMoved && startsWith (key, "fx_"));
                 if (follows || std::abs (now - reported[(size_t) i]) > 1.0e-4f)
                 {
@@ -586,9 +612,259 @@ namespace
             else if (info.slices.isEmpty())                        sl << "NOT SLICED";
             else                                                   sl << info.slices.count << " SLICES";
 
+            // Slice on load: a pad waiting for its new sample to decode
+            for (int p = 0; p < tb::kNumPads; ++p)
+                if (sliceWhenLoaded[(size_t) p].load())
+                {
+                    const auto pi = proc->getSamples().getInfo (p);
+                    if (pi.status == tb::SampleManager::Status::ready)
+                    {
+                        sliceWhenLoaded[(size_t) p] = false;
+                        proc->getSamples().autoSlice (p);
+                    }
+                    else if (pi.status != tb::SampleManager::Status::loading)
+                        sliceWhenLoaded[(size_t) p] = false;
+                }
+
+            // SAMPLES
+            juce::String smp;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                const int n = sampleFiles.size(), i = juce::jlimit (0, juce::jmax (0, n - 1), smpIndex.load());
+                if (scanning.load() && n == 0)  smp = "LOOKING FOR SAMPLES...";
+                else if (n == 0)                smp = "NO SAMPLES: PUT WAVS IN A FOLDER CALLED  Twisted Breaks  ON YOUR SD CARD";
+                else                            smp << (i + 1) << " / " << n << "   " << sampleFiles[i].getFileName().toUpperCase();
+            }
+
+            // STEPS
+            int on = 0;
+            for (int k = 0; k < tb::SequencerData::kSteps; ++k)
+                if (proc->getBridge().seq.get (pad, k).on) ++on;
+            int seqLen = 16;
+            if (auto* lp = proc->getParameters().getRawParameterValue (tb::params::seqLength)) seqLen = juce::roundToInt (lp->load());
+            juce::String stp = "PAD " + tb::padLabel (pad) + "   " + juce::String (on) + (on == 1 ? " STEP" : " STEPS")
+                             + "   LENGTH " + juce::String (seqLen);
+
+            // SETUP: what MIDI is coming in
+            auto& engine = proc->getEngine();
+            juce::String nt;
+            const int learning = engine.getNoteLearnPad(), last = proc->getBridge().lastMidiNote.load();
+            if (learning >= 0)  nt = "HIT A PAD ON THE MPC: IT WILL PLAY PAD " + tb::padLabel (learning);
+            else if (last < 0)  nt = "NO NOTES YET: HIT A PAD";
+            else
+            {
+                const int target = engine.padForNote (last);
+                nt << "LAST NOTE " << last << "  ->  " << (target >= 0 ? "PAD " + tb::padLabel (target) : juce::String ("NO PAD"));
+            }
+
             std::lock_guard<std::mutex> g (cacheLock);
             copyText (statusBuf, st.toUpperCase());
             copyText (slInfoBuf, sl);
+            copyText (smpInfoBuf, smp);
+            copyText (stInfoBuf, stp);
+            copyText (noteInfoBuf, nt);
+        }
+
+        //======================================================================
+        //  The host's own parameters (samples, steps, notes, save kit)
+        //======================================================================
+        static bool isOwnKey (const char* key)
+        {
+            return startsWith (key, "smp_") || startsWith (key, "st_") || startsWith (key, "note_") || std::strcmp (key, "kit_save") == 0;
+        }
+
+        /** The value in the parameter's own units (an option's index, a number). Lock-free: any thread. */
+        float ownValue (int i) const
+        {
+            const char* key = PARAMS[i].key;
+            const int pad = selectedPad.load();
+            if (std::strcmp (key, "smp_file") == 0) return (float) smpIndex.load();
+            if (std::strcmp (key, "smp_slice") == 0) return smpSliceOnLoad.load() ? 1.0f : 0.0f;
+            if (std::strcmp (key, "st_pos") == 0) return (float) (proc->getBridge().seqStep.load() + 1);
+            if (std::strcmp (key, "note_base") == 0) return (float) noteBaseOption();
+            if (startsWith (key, "st_") && std::isdigit ((unsigned char) key[3]))
+                return proc->getBridge().seq.get (pad, std::atoi (key + 3) - 1).on ? 1.0f : 0.0f;
+            return 0.0f;   // triggers
+        }
+
+        bool setOwnParam (const char* key, int idx, float v)
+        {
+            if (! isOwnKey (key) || idx < 0) return false;
+            const int pad = selectedPad.load();
+            const bool press = PARAMS[idx].momentary && v > 0.5f;
+
+            if (std::strcmp (key, "smp_file") == 0)
+            {
+                smpIndex.store (juce::jmax (0, juce::roundToInt (v)));
+                // turning the selector finds samples copied onto a card since the last look
+                bool empty;
+                {
+                    std::lock_guard<std::mutex> g (fileLock);
+                    empty = sampleFiles.isEmpty();
+                }
+                if (empty || juce::Time::getMillisecondCounter() - lastScanMs.load() > 3000) startSampleScan();
+            }
+            else if (std::strcmp (key, "smp_slice") == 0)  smpSliceOnLoad.store (v > 0.5f);
+            else if (std::strcmp (key, "smp_load") == 0)   { if (press) loadSample (pad, smpIndex.load()); }
+            else if (std::strcmp (key, "smp_clear") == 0)
+            {
+                if (press) juce::MessageManager::callAsync ([this, pad]
+                {
+                    proc->getSamples().clearPad (pad);
+                    setStatus ("CLEARED PAD " + tb::padLabel (pad));
+                });
+            }
+            else if (std::strcmp (key, "st_clear") == 0)   { if (press) proc->getBridge().seq.clearLane (pad); }
+            else if (startsWith (key, "st_") && std::isdigit ((unsigned char) key[3]))
+            {
+                const int step = std::atoi (key + 3) - 1;
+                auto& seq = proc->getBridge().seq;
+                auto st = seq.get (pad, step);
+                if (st.on != (v > 0.5f))
+                {
+                    st.on = v > 0.5f;
+                    if (st.on && st.velocity <= 1) st.velocity = 100;
+                    seq.set (pad, step, st);
+                }
+            }
+            else if (std::strcmp (key, "note_base") == 0)
+            {
+                const int option = juce::roundToInt (v);
+                if (option >= 0 && option < 3) setNoteBase (kNoteBases[option]);
+            }
+            else if (std::strcmp (key, "note_learn") == 0) { if (press) proc->getEngine().startNoteLearn (pad); }
+            else if (std::strcmp (key, "kit_save") == 0)   { if (press) juce::MessageManager::callAsync ([this] { saveKitHere(); }); }
+            return true;
+        }
+
+        static constexpr int kNoteBases[3] = { 36, 37, 48 };
+
+        int noteBaseOption() const
+        {
+            auto& engine = proc->getEngine();
+            for (int o = 0; o < 3; ++o)
+            {
+                bool all = true;
+                for (int p = 0; p < tb::kPadsPerScene && all; ++p)
+                    all = engine.getPadNote (p) == kNoteBases[o] + p;
+                if (all) return o;
+            }
+            return 3;
+        }
+
+        /** Both scenes' pads on base .. base + 15 (cleared first: setPadNote swaps a taken note). */
+        void setNoteBase (int base)
+        {
+            auto& engine = proc->getEngine();
+            for (int p = 0; p < tb::kNumPads; ++p) engine.setPadNote (p, -1);
+            for (int p = 0; p < tb::kNumPads; ++p) engine.setPadNote (p, base + p % tb::kPadsPerScene);
+        }
+
+        //======================================================================
+        //  Samples from the SD card (worker thread)
+        //======================================================================
+        juce::File samplesDir() const { return dataRoot.getChildFile ("Samples"); }
+
+        /** Where breaks are looked for: the plugin's own Samples folder, and a folder called
+            "Twisted Breaks" (or "Breaks") at the top of any card or drive the MPC has mounted. */
+        juce::Array<juce::File> sampleRoots() const
+        {
+            juce::Array<juce::File> roots { samplesDir() };
+            const juce::File media ("/media");
+            if (media.isDirectory())
+                for (const auto& card : media.findChildFiles (juce::File::findDirectories, false))
+                    for (const char* name : { "Twisted Breaks", "Breaks" })
+                    {
+                        const auto f = card.getChildFile (name);
+                        if (f.isDirectory() && ! roots.contains (f)) roots.add (f);
+                    }
+            return roots;
+        }
+
+        void startSampleScan()
+        {
+            if (scanning.exchange (true)) return;
+            if (scanThread.joinable()) scanThread.join();
+            scanThread = std::thread ([this]
+            {
+                juce::Array<juce::File> found;
+                std::function<void (const juce::File&, int)> walk = [&] (const juce::File& dir, int depth)
+                {
+                    if (scanAbort.load() || depth > 4 || found.size() >= 999) return;
+                    auto entries = dir.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles, false);
+                    entries.sort();
+                    for (const auto& f : entries)   // files first, then folders, each by name
+                        if (! f.isDirectory() && ! f.isSymbolicLink() && tb::SampleManager::isSupportedFile (f) && found.size() < 999)
+                            found.add (f);
+                    for (const auto& f : entries)
+                        if (f.isDirectory() && ! f.isSymbolicLink()) walk (f, depth + 1);
+                };
+                for (const auto& root : sampleRoots()) walk (root, 0);
+
+                {
+                    std::lock_guard<std::mutex> g (fileLock);
+                    const auto current = juce::isPositiveAndBelow (smpIndex.load(), sampleFiles.size()) ? sampleFiles[smpIndex.load()] : juce::File();
+                    sampleFiles = found;
+                    const int keep = current == juce::File() ? -1 : found.indexOf (current);
+                    smpIndex.store (keep >= 0 ? keep : juce::jlimit (0, juce::jmax (0, found.size() - 1), smpIndex.load()));
+                }
+                lastScanMs.store (juce::Time::getMillisecondCounter());
+                scanning.store (false);
+            });
+        }
+
+        juce::String sampleName (int i) const
+        {
+            std::lock_guard<std::mutex> g (fileLock);
+            if (juce::isPositiveAndBelow (i, sampleFiles.size())) return sampleFiles[i].getFileNameWithoutExtension();
+            return "-";
+        }
+
+        void loadSample (int pad, int index)
+        {
+            juce::File file;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                if (! juce::isPositiveAndBelow (index, sampleFiles.size())) { setStatus ("NO SAMPLE SELECTED"); return; }
+                file = sampleFiles[index];
+            }
+            const bool slice = smpSliceOnLoad.load();
+            juce::MessageManager::callAsync ([this, pad, file, slice]
+            {
+                proc->getSamples().loadFile (pad, file);
+                sliceWhenLoaded[(size_t) pad] = slice;
+                setStatus ("LOADED " + file.getFileNameWithoutExtension().toUpperCase() + " ONTO PAD " + tb::padLabel (pad)
+                           + (slice ? ", SLICING" : ""));
+            });
+        }
+
+        //======================================================================
+        //  SAVE KIT (message thread): the whole kit, samples inside, as "MPC Kit NNN"
+        //======================================================================
+        void saveKitHere()
+        {
+            auto& presets = proc->getPresets();
+            const auto folder = presets.presetsFolder (tb::PresetManager::Type::kit);
+            folder.createDirectory();
+            juce::String name;
+            for (int n = 1; n < 1000; ++n)
+            {
+                name = "MPC Kit " + juce::String (n).paddedLeft ('0', 3);
+                if (! folder.getChildFile (name + ".tbkit").exists()) break;
+            }
+            tb::PresetManager::Meta meta;
+            meta.type = tb::PresetManager::Type::kit;
+            meta.name = name;
+            meta.tags = { "MPC" };
+            meta.created = juce::Time::getCurrentTime();
+            const auto r = presets.saveKit (folder.getChildFile (name + ".tbkit"), meta);
+            if (r.failed()) { setStatus ("SAVE FAILED: " + r.getErrorMessage().toUpperCase()); return; }
+            rescanKits();
+            {
+                std::lock_guard<std::mutex> g (kitLock);
+                kitIndex.store (juce::jmax (0, kitNames.indexOf (name)));
+            }
+            setStatus ("SAVED " + name.toUpperCase());
         }
 
         template <size_t N>
@@ -714,7 +990,16 @@ namespace
         std::atomic<float> slSens { 0.5f };
         std::atomic<int>   slCountOption { 2 };
         mutable std::mutex cacheLock;
-        std::array<char, 96> statusBuf { "READY" }, slInfoBuf {};
+        std::array<char, 96> statusBuf { "READY" }, slInfoBuf {}, smpInfoBuf {}, stInfoBuf {}, noteInfoBuf {};
+
+        // Samples
+        mutable std::mutex fileLock;
+        juce::Array<juce::File> sampleFiles;
+        std::atomic<int>  smpIndex { 0 };
+        std::atomic<bool> smpSliceOnLoad { true }, scanning { false }, scanAbort { false };
+        std::atomic<uint32_t> lastScanMs { 0 };
+        std::thread scanThread;
+        std::array<std::atomic<bool>, tb::kNumPads> sliceWhenLoaded {};
 
         struct Ticker final : juce::Timer
         {
