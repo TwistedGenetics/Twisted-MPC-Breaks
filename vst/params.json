@@ -1153,6 +1153,1415 @@
    ],
    "default": 0,
    "momentary": true
+  },
+  {
+   "key": "sl_pos",
+   "name": "Move Marker",
+   "min": 0,
+   "max": 998,
+   "default": 0,
+   "display": "int",
+   "dynamic_display": true,
+   "nudge_pct": 10
+  },
+  {
+   "key": "sl_add",
+   "name": "Add Marker",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_del",
+   "name": "Delete Marker",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_zoom",
+   "name": "Zoom",
+   "options": [
+    "Whole",
+    "Slice"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sl_play",
+   "name": "Play Slice",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_head",
+   "name": "Screen Top",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "sl_foot",
+   "name": "Screen Bottom",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "wv_tap",
+   "name": "Wave Tap",
+   "options": [
+    "Col 1",
+    "Col 2",
+    "Col 3",
+    "Col 4",
+    "Col 5",
+    "Col 6",
+    "Col 7",
+    "Col 8",
+    "Col 9",
+    "Col 10",
+    "Col 11",
+    "Col 12",
+    "Col 13",
+    "Col 14",
+    "Col 15",
+    "Col 16",
+    "Col 17",
+    "Col 18",
+    "Col 19",
+    "Col 20",
+    "Col 21",
+    "Col 22",
+    "Col 23",
+    "Col 24",
+    "Col 25",
+    "Col 26",
+    "Col 27",
+    "Col 28",
+    "Col 29",
+    "Col 30",
+    "Col 31",
+    "Col 32",
+    "Col 33",
+    "Col 34",
+    "Col 35",
+    "Col 36",
+    "Col 37",
+    "Col 38",
+    "Col 39",
+    "Col 40",
+    "Col 41",
+    "Col 42",
+    "Col 43",
+    "Col 44",
+    "Col 45",
+    "Col 46",
+    "Col 47",
+    "Col 48",
+    "Col 49",
+    "Col 50",
+    "Col 51",
+    "Col 52",
+    "Col 53",
+    "Col 54",
+    "Col 55",
+    "Col 56",
+    "Col 57",
+    "Col 58",
+    "Col 59",
+    "Col 60",
+    "Col 61",
+    "Col 62",
+    "Col 63",
+    "Col 64",
+    "None"
+   ],
+   "default": 64
+  },
+  {
+   "key": "wv_01",
+   "name": "Wave 1",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_02",
+   "name": "Wave 2",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_03",
+   "name": "Wave 3",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_04",
+   "name": "Wave 4",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_05",
+   "name": "Wave 5",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_06",
+   "name": "Wave 6",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_07",
+   "name": "Wave 7",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_08",
+   "name": "Wave 8",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_09",
+   "name": "Wave 9",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_10",
+   "name": "Wave 10",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_11",
+   "name": "Wave 11",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_12",
+   "name": "Wave 12",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_13",
+   "name": "Wave 13",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_14",
+   "name": "Wave 14",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_15",
+   "name": "Wave 15",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_16",
+   "name": "Wave 16",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_17",
+   "name": "Wave 17",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_18",
+   "name": "Wave 18",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_19",
+   "name": "Wave 19",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_20",
+   "name": "Wave 20",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_21",
+   "name": "Wave 21",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_22",
+   "name": "Wave 22",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_23",
+   "name": "Wave 23",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_24",
+   "name": "Wave 24",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_25",
+   "name": "Wave 25",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_26",
+   "name": "Wave 26",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_27",
+   "name": "Wave 27",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_28",
+   "name": "Wave 28",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_29",
+   "name": "Wave 29",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_30",
+   "name": "Wave 30",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_31",
+   "name": "Wave 31",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_32",
+   "name": "Wave 32",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_33",
+   "name": "Wave 33",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_34",
+   "name": "Wave 34",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_35",
+   "name": "Wave 35",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_36",
+   "name": "Wave 36",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_37",
+   "name": "Wave 37",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_38",
+   "name": "Wave 38",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_39",
+   "name": "Wave 39",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_40",
+   "name": "Wave 40",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_41",
+   "name": "Wave 41",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_42",
+   "name": "Wave 42",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_43",
+   "name": "Wave 43",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_44",
+   "name": "Wave 44",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_45",
+   "name": "Wave 45",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_46",
+   "name": "Wave 46",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_47",
+   "name": "Wave 47",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_48",
+   "name": "Wave 48",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_49",
+   "name": "Wave 49",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_50",
+   "name": "Wave 50",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_51",
+   "name": "Wave 51",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_52",
+   "name": "Wave 52",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_53",
+   "name": "Wave 53",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_54",
+   "name": "Wave 54",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_55",
+   "name": "Wave 55",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_56",
+   "name": "Wave 56",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_57",
+   "name": "Wave 57",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_58",
+   "name": "Wave 58",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_59",
+   "name": "Wave 59",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_60",
+   "name": "Wave 60",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_61",
+   "name": "Wave 61",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_62",
+   "name": "Wave 62",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_63",
+   "name": "Wave 63",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wv_64",
+   "name": "Wave 64",
+   "min": 0,
+   "max": 80,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_01",
+   "name": "Marker 1",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_02",
+   "name": "Marker 2",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_03",
+   "name": "Marker 3",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_04",
+   "name": "Marker 4",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_05",
+   "name": "Marker 5",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_06",
+   "name": "Marker 6",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_07",
+   "name": "Marker 7",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_08",
+   "name": "Marker 8",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_09",
+   "name": "Marker 9",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_10",
+   "name": "Marker 10",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_11",
+   "name": "Marker 11",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_12",
+   "name": "Marker 12",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_13",
+   "name": "Marker 13",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_14",
+   "name": "Marker 14",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_15",
+   "name": "Marker 15",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_16",
+   "name": "Marker 16",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_17",
+   "name": "Marker 17",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_18",
+   "name": "Marker 18",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_19",
+   "name": "Marker 19",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_20",
+   "name": "Marker 20",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_21",
+   "name": "Marker 21",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_22",
+   "name": "Marker 22",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_23",
+   "name": "Marker 23",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_24",
+   "name": "Marker 24",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_25",
+   "name": "Marker 25",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_26",
+   "name": "Marker 26",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_27",
+   "name": "Marker 27",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_28",
+   "name": "Marker 28",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_29",
+   "name": "Marker 29",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_30",
+   "name": "Marker 30",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_31",
+   "name": "Marker 31",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_32",
+   "name": "Marker 32",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_33",
+   "name": "Marker 33",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_34",
+   "name": "Marker 34",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_35",
+   "name": "Marker 35",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_36",
+   "name": "Marker 36",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_37",
+   "name": "Marker 37",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_38",
+   "name": "Marker 38",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_39",
+   "name": "Marker 39",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_40",
+   "name": "Marker 40",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_41",
+   "name": "Marker 41",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_42",
+   "name": "Marker 42",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_43",
+   "name": "Marker 43",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_44",
+   "name": "Marker 44",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_45",
+   "name": "Marker 45",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_46",
+   "name": "Marker 46",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_47",
+   "name": "Marker 47",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_48",
+   "name": "Marker 48",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_49",
+   "name": "Marker 49",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_50",
+   "name": "Marker 50",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_51",
+   "name": "Marker 51",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_52",
+   "name": "Marker 52",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_53",
+   "name": "Marker 53",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_54",
+   "name": "Marker 54",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_55",
+   "name": "Marker 55",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_56",
+   "name": "Marker 56",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_57",
+   "name": "Marker 57",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_58",
+   "name": "Marker 58",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_59",
+   "name": "Marker 59",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_60",
+   "name": "Marker 60",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_61",
+   "name": "Marker 61",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_62",
+   "name": "Marker 62",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_63",
+   "name": "Marker 63",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "wt_64",
+   "name": "Marker 64",
+   "min": 0,
+   "max": 32,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "smp_open",
+   "name": "Open",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_back",
+   "name": "Back",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_play",
+   "name": "Play Sample",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_audition",
+   "name": "Audition",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
+  },
+  {
+   "key": "smp_path",
+   "name": "Folder",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l1",
+   "name": "Row 1",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l2",
+   "name": "Row 2",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l3",
+   "name": "Row 3",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l4",
+   "name": "Row 4",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l5",
+   "name": "Row 5",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l6",
+   "name": "Row 6",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_l7",
+   "name": "Row 7",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_row1",
+   "name": "Pick Row 1",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row2",
+   "name": "Pick Row 2",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row3",
+   "name": "Pick Row 3",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row4",
+   "name": "Pick Row 4",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row5",
+   "name": "Pick Row 5",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row6",
+   "name": "Pick Row 6",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_row7",
+   "name": "Pick Row 7",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sp_sync",
+   "name": "Tempo Sync",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 1
+  },
+  {
+   "key": "sp_info",
+   "name": "Pad Playback",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "snd_info1",
+   "name": "Sound 1",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "snd_info2",
+   "name": "Sound 2",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "kit_prev",
+   "name": "Previous Kit",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "kit_next",
+   "name": "Next Kit",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "kit_info",
+   "name": "Kit Info",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
   }
  ],
  "sections": [
@@ -1325,6 +2734,183 @@
     "note_learn",
     "note_info",
     "kit_save"
+   ]
+  },
+  {
+   "label": "Slice screen",
+   "keys": [
+    "sl_pos",
+    "sl_add",
+    "sl_del",
+    "sl_zoom",
+    "sl_play",
+    "sl_head",
+    "sl_foot",
+    "wv_tap",
+    "wv_01",
+    "wv_02",
+    "wv_03",
+    "wv_04",
+    "wv_05",
+    "wv_06",
+    "wv_07",
+    "wv_08",
+    "wv_09",
+    "wv_10",
+    "wv_11",
+    "wv_12",
+    "wv_13",
+    "wv_14",
+    "wv_15",
+    "wv_16",
+    "wv_17",
+    "wv_18",
+    "wv_19",
+    "wv_20",
+    "wv_21",
+    "wv_22",
+    "wv_23",
+    "wv_24",
+    "wv_25",
+    "wv_26",
+    "wv_27",
+    "wv_28",
+    "wv_29",
+    "wv_30",
+    "wv_31",
+    "wv_32",
+    "wv_33",
+    "wv_34",
+    "wv_35",
+    "wv_36",
+    "wv_37",
+    "wv_38",
+    "wv_39",
+    "wv_40",
+    "wv_41",
+    "wv_42",
+    "wv_43",
+    "wv_44",
+    "wv_45",
+    "wv_46",
+    "wv_47",
+    "wv_48",
+    "wv_49",
+    "wv_50",
+    "wv_51",
+    "wv_52",
+    "wv_53",
+    "wv_54",
+    "wv_55",
+    "wv_56",
+    "wv_57",
+    "wv_58",
+    "wv_59",
+    "wv_60",
+    "wv_61",
+    "wv_62",
+    "wv_63",
+    "wv_64",
+    "wt_01",
+    "wt_02",
+    "wt_03",
+    "wt_04",
+    "wt_05",
+    "wt_06",
+    "wt_07",
+    "wt_08",
+    "wt_09",
+    "wt_10",
+    "wt_11",
+    "wt_12",
+    "wt_13",
+    "wt_14",
+    "wt_15",
+    "wt_16",
+    "wt_17",
+    "wt_18",
+    "wt_19",
+    "wt_20",
+    "wt_21",
+    "wt_22",
+    "wt_23",
+    "wt_24",
+    "wt_25",
+    "wt_26",
+    "wt_27",
+    "wt_28",
+    "wt_29",
+    "wt_30",
+    "wt_31",
+    "wt_32",
+    "wt_33",
+    "wt_34",
+    "wt_35",
+    "wt_36",
+    "wt_37",
+    "wt_38",
+    "wt_39",
+    "wt_40",
+    "wt_41",
+    "wt_42",
+    "wt_43",
+    "wt_44",
+    "wt_45",
+    "wt_46",
+    "wt_47",
+    "wt_48",
+    "wt_49",
+    "wt_50",
+    "wt_51",
+    "wt_52",
+    "wt_53",
+    "wt_54",
+    "wt_55",
+    "wt_56",
+    "wt_57",
+    "wt_58",
+    "wt_59",
+    "wt_60",
+    "wt_61",
+    "wt_62",
+    "wt_63",
+    "wt_64"
+   ]
+  },
+  {
+   "label": "Browser",
+   "keys": [
+    "smp_open",
+    "smp_back",
+    "smp_play",
+    "smp_audition",
+    "smp_path",
+    "smp_l1",
+    "smp_l2",
+    "smp_l3",
+    "smp_l4",
+    "smp_l5",
+    "smp_l6",
+    "smp_l7",
+    "smp_row1",
+    "smp_row2",
+    "smp_row3",
+    "smp_row4",
+    "smp_row5",
+    "smp_row6",
+    "smp_row7"
+   ]
+  },
+  {
+   "label": "Sound",
+   "keys": [
+    "sp_sync",
+    "sp_info",
+    "snd_info1",
+    "snd_info2",
+    "kit_prev",
+    "kit_next",
+    "kit_info"
    ]
   }
  ]

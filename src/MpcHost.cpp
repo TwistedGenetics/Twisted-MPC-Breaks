@@ -15,29 +15,42 @@
         ours, so this library runs its own: one thread per process, started
         with the first instance and stopped with the last. Everything that
         touches the processor's non-real-time side runs there.
+      * One worker thread per instance lists folders and decodes auditions
+        (an SD card or USB drive can be slow).
 
     Parameters (vst/params.json, made by tools/make_params.py)
       * a key that is a Twisted Breaks parameter id maps straight onto it
       * sp_<name>: the selected pad's pad<NN>_<name>
       * fx_<key>:  the FX group's grp_<g>_<key> on / off
-      * the host's own: kit, kit_load, status, pad, fx_group
+      * the host's own: kit, pad, fx_group, the slicer, the slice screen,
+        the sample browser, steps, pad notes, the readouts
       Values travel as text in the parameter's own units (an option's index,
-      a whole number, dB ...), the toolkit's convention.
+      a whole number, dB ...), the toolkit's convention. Each parameter's
+      Twisted Breaks counterpart is looked up once (per pad / FX group), so the
+      audio thread never searches by name.
 */
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "Core/FxDefs.h"
+#include "Core/MacroDefs.h"
+#include "Engine/PadVoice.h"
+#include "Engine/SampleLoader.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
-#include <functional>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
+#include <sys/stat.h>
 
 extern "C"
 {
@@ -50,6 +63,11 @@ namespace
     constexpr double kSampleRate = 44100.0;
     constexpr int    kBlock      = 128;
     constexpr const char* kStatePrefix = "TBM1:";
+
+    constexpr int kWaveCols   = 64;   // tools/make_params.py WAVE_COLS
+    constexpr int kWaveLevels = 9;    // WAVE_LEVELS
+    constexpr int kRows       = 7;    // BROWSER_ROWS
+    constexpr int kTapNone    = kWaveCols;
 
     //==========================================================================
     //  The process-wide JUCE message thread
@@ -127,21 +145,34 @@ namespace
     int put (char* buf, int len, const juce::String& s)
     {
         if (buf == nullptr || len <= 0) return 0;
-        const auto utf8 = s.toStdString();
-        std::snprintf (buf, (size_t) len, "%s", utf8.c_str());
+        std::snprintf (buf, (size_t) len, "%s", s.toRawUTF8());
         return (int) std::strlen (buf) + 1;
-    }
-
-    int paramIndex (const char* key)
-    {
-        for (int i = 0; i < NPARAMS; ++i)
-            if (std::strcmp (PARAMS[i].key, key) == 0) return i;
-        return -1;
     }
 
     bool startsWith (const char* s, const char* prefix)
     {
         return std::strncmp (s, prefix, std::strlen (prefix)) == 0;
+    }
+
+    /** A parameter's index from its key: binary search over a sorted copy (no allocation: the audio thread asks). */
+    int paramIndex (const char* key)
+    {
+        static const std::vector<int> sorted = []
+        {
+            std::vector<int> v ((size_t) NPARAMS);
+            for (int i = 0; i < NPARAMS; ++i) v[(size_t) i] = i;
+            std::sort (v.begin(), v.end(), [] (int a, int b) { return std::strcmp (PARAMS[a].key, PARAMS[b].key) < 0; });
+            return v;
+        }();
+        size_t lo = 0, hi = sorted.size();
+        while (lo < hi)
+        {
+            const size_t mid = (lo + hi) / 2;
+            const int c = std::strcmp (PARAMS[sorted[mid]].key, key);
+            if (c == 0) return sorted[mid];
+            if (c < 0) lo = mid + 1; else hi = mid;
+        }
+        return -1;
     }
 
     int fxIdForKey (const char* k)
@@ -152,6 +183,89 @@ namespace
     }
 
     //==========================================================================
+    //  What each parameter is, worked out once from its key
+    //==========================================================================
+    enum class Kind : uint8_t
+    {
+        param,       // a Twisted Breaks parameter of the same id
+        padParam,    // sp_*, sl_pick: the selected pad's
+        fxParam,     // fx_*: the FX group's
+        kit, pad, fxGroup, slSens, slCount,
+        text,        // a readout
+        own          // the host's own (below)
+    };
+
+    enum class Own : uint8_t
+    {
+        none, trigger, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+    };
+
+    struct Info
+    {
+        Kind kind = Kind::param;
+        Own  own  = Own::none;
+        int  sub  = 0;       // step / column number (0-based)
+        int  text = -1;      // readout slot
+    };
+
+    // The readouts: key -> slot. Each slot is a fixed buffer refreshInfo() fills.
+    enum Text
+    {
+        tStatus, tSlInfo, tSmpInfo, tStInfo, tNoteInfo, tSlHead, tSlFoot, tSmpPath,
+        tRow1, tRow2, tRow3, tRow4, tRow5, tRow6, tRow7,
+        tSpInfo, tSnd1, tSnd2, tKitInfo, kNumTexts
+    };
+    const char* const kTextKeys[kNumTexts] = {
+        "status", "sl_info", "smp_info", "st_info", "note_info", "sl_head", "sl_foot", "smp_path",
+        "smp_l1", "smp_l2", "smp_l3", "smp_l4", "smp_l5", "smp_l6", "smp_l7",
+        "sp_info", "snd_info1", "snd_info2", "kit_info"
+    };
+
+    const std::vector<Info>& infos()
+    {
+        static const std::vector<Info> table = []
+        {
+            std::vector<Info> t ((size_t) NPARAMS);
+            for (int i = 0; i < NPARAMS; ++i)
+            {
+                const char* k = PARAMS[i].key;
+                auto& in = t[(size_t) i];
+                for (int s = 0; s < kNumTexts; ++s)
+                    if (std::strcmp (k, kTextKeys[s]) == 0) { in.kind = Kind::text; in.text = s; }
+                if (in.kind == Kind::text) continue;
+
+                auto own = [&in] (Own o, int sub = 0) { in.kind = Kind::own; in.own = o; in.sub = sub; };
+                if      (std::strcmp (k, "kit") == 0)          in.kind = Kind::kit;
+                else if (std::strcmp (k, "pad") == 0)          in.kind = Kind::pad;
+                else if (std::strcmp (k, "fx_group") == 0)     in.kind = Kind::fxGroup;
+                else if (std::strcmp (k, "sl_sens") == 0)      in.kind = Kind::slSens;
+                else if (std::strcmp (k, "sl_count") == 0)     in.kind = Kind::slCount;
+                else if (std::strcmp (k, "sl_pick") == 0)      in.kind = Kind::padParam;
+                else if (std::strcmp (k, "smp_file") == 0)     own (Own::smpFile);
+                else if (std::strcmp (k, "smp_slice") == 0)    own (Own::smpSlice);
+                else if (std::strcmp (k, "smp_audition") == 0) own (Own::smpAudition);
+                else if (std::strcmp (k, "st_pos") == 0)       own (Own::stPos);
+                else if (std::strcmp (k, "note_base") == 0)    own (Own::noteBase);
+                else if (std::strcmp (k, "sl_pos") == 0)       own (Own::slPos);
+                else if (std::strcmp (k, "sl_zoom") == 0)      own (Own::slZoom);
+                else if (std::strcmp (k, "wv_tap") == 0)       own (Own::wvTap);
+                else if (startsWith (k, "wv_"))                own (Own::wave, std::atoi (k + 3) - 1);
+                else if (startsWith (k, "wt_"))                own (Own::tab, std::atoi (k + 3) - 1);
+                else if (startsWith (k, "st_") && std::isdigit ((unsigned char) k[3])) own (Own::step, std::atoi (k + 3) - 1);
+                else if (startsWith (k, "sp_"))                in.kind = Kind::padParam;
+                else if (startsWith (k, "fx_"))                in.kind = Kind::fxParam;
+                else if (PARAMS[i].momentary && (startsWith (k, "smp_") || startsWith (k, "st_") || startsWith (k, "note_")
+                                                 || startsWith (k, "kit_") || startsWith (k, "sl_")))
+                    own (Own::trigger);
+            }
+            return t;
+        }();
+        return table;
+    }
+
+    const Info& infoOf (int i) { return infos()[(size_t) i]; }
+
+    //==========================================================================
     //  One plugin instance
     //==========================================================================
     class Host final : public juce::AudioPlayHead
@@ -160,6 +274,7 @@ namespace
         explicit Host (const char* dataDir)
         {
             MessageThread::acquire();
+            infos();   // built here, not first on the audio thread
 
             dataRoot = dataDir != nullptr && *dataDir != 0
                          ? juce::File (juce::String::fromUTF8 (dataDir))
@@ -174,17 +289,17 @@ namespace
                 proc->prepareToPlay (kSampleRate, kBlock);
                 proc->getPresets().setRootForTesting (dataRoot);
                 proc->getPresets().ensureFactoryContent();
+                buildPointers();
                 rescanKits();
                 infoTimer.onTick = [this] { refreshInfo(); };
                 infoTimer.startTimer (100);
-                refreshInfo();
             });
             samplesDir().createDirectory();
-            startSampleScan();
+            formats.registerBasicFormats();
+            browserStart();
 
             buffer.setSize (2, kBlock);
             midi.ensureSize (2048);
-            for (int i = 0; i < NPARAMS; ++i) reported[(size_t) i] = currentNorm (i);
 
             // A new instance plays straight away: the factory jungle kit (a break on pad 01,
             // hits on 02-07 and a pattern), else the first kit there is.
@@ -195,15 +310,17 @@ namespace
             }
             kitIndex.store (first);
             loadKit (first, true);
+            MessageThread::run ([this] { refreshInfo(); });
+            for (int i = 0; i < NPARAMS; ++i) reported[(size_t) i] = currentNorm (i);
         }
 
         ~Host() override
         {
-            scanAbort = true;
-            if (scanThread.joinable()) scanThread.join();
+            pool.removeAllJobs (true, 10000);
             MessageThread::run ([this]
             {
                 infoTimer.stopTimer();
+                proc->getSamples().preview (nullptr);
                 proc->releaseResources();
                 proc.reset();
             });
@@ -226,6 +343,7 @@ namespace
             {
                 blockPpq = ppq;
                 bpm = tempo;
+                hostBpm.store (tempo, std::memory_order_relaxed);
             }
             playing = isPlaying != 0;
             framesSincePos = 0;
@@ -283,99 +401,117 @@ namespace
             if (std::strcmp (key, "state") == 0) { restoreState (val); return; }
 
             const int idx = paramIndex (key);
+            if (idx < 0) return;
             const float v = (float) std::atof (val);
+            const auto& in = infoOf (idx);
 
-            if (std::strcmp (key, "kit") == 0)
+            switch (in.kind)
             {
-                kitIndex.store (juce::jmax (0, juce::roundToInt (v)));
-                // Turning the selector looks for kits copied onto the device since the last look.
-                // (Queued on the message thread; the destructor's own call queues after it.)
-                if (! rescanQueued.exchange (true))
-                    juce::MessageManager::callAsync ([this] { rescanQueued = false; rescanKits(); });
-            }
-            else if (std::strcmp (key, "kit_load") == 0)
-            {
-                if (v > 0.5f) loadKit (kitIndex.load(), false);
-            }
-            else if (std::strcmp (key, "pad") == 0)
-            {
-                const int pad = juce::jlimit (0, tb::kNumPads - 1, juce::roundToInt (v) - 1);
-                selectedPad.store (pad);
-                proc->getBridge().selectedPad.store (pad);
-            }
-            else if (std::strcmp (key, "fx_group") == 0)
-            {
-                const int g = juce::jlimit (0, tb::kNumGroups - 1, juce::roundToInt (v));
-                fxGroup.store (g);
-                proc->getEngine().setFxTargetGroup (g);
-            }
-            else if (std::strcmp (key, "sl_sens") == 0)
-            {
-                const float sens = juce::jlimit (0.0f, 1.0f, v / 100.0f);
-                const int pad = selectedPad.load();
-                slSens.store (sens);
-                juce::MessageManager::callAsync ([this, pad, sens] { proc->getSamples().setSensitivity (pad, sens); });
-            }
-            else if (std::strcmp (key, "sl_count") == 0)
-            {
-                const int option = juce::jlimit (0, 2, juce::roundToInt (v));
-                const int pad = selectedPad.load();
-                slCountOption.store (option);
-                juce::MessageManager::callAsync ([this, pad, option] { proc->getSamples().setSliceCount (pad, kSliceCounts[option]); });
-            }
-            else if (startsWith (key, "sl_") && idx >= 0 && PARAMS[idx].momentary)
-            {
-                if (v > 0.5f) slicerAction (key, selectedPad.load());
-            }
-            else if (setOwnParam (key, idx, v))
-            {
-            }
-            else if (auto* p = resolve (key))
-            {
-                p->setValueNotifyingHost (p->convertTo0to1 (toPlain (idx, p, v)));
-                if (idx >= 0 && PARAMS[idx].momentary && v > 0.5f)
-                    triggerHold[(size_t) idx].store (4 * kBlock);   // a rising edge for the engine, then back to 0
+                case Kind::kit:     selectKit (juce::roundToInt (v)); break;
+                case Kind::pad:
+                {
+                    const int pad = juce::jlimit (0, tb::kNumPads - 1, juce::roundToInt (v) - 1);
+                    selectedPad.store (pad);
+                    proc->getBridge().selectedPad.store (pad);
+                    break;
+                }
+                case Kind::fxGroup:
+                {
+                    const int g = juce::jlimit (0, tb::kNumGroups - 1, juce::roundToInt (v));
+                    fxGroup.store (g);
+                    proc->getEngine().setFxTargetGroup (g);
+                    break;
+                }
+                case Kind::slSens:
+                {
+                    const float sens = juce::jlimit (0.0f, 1.0f, v / 100.0f);
+                    const int pad = selectedPad.load();
+                    slSens.store (sens);
+                    juce::MessageManager::callAsync ([this, pad, sens] { proc->getSamples().setSensitivity (pad, sens); });
+                    break;
+                }
+                case Kind::slCount:
+                {
+                    const int option = juce::jlimit (0, 2, juce::roundToInt (v));
+                    const int pad = selectedPad.load();
+                    slCountOption.store (option);
+                    juce::MessageManager::callAsync ([this, pad, option] { proc->getSamples().setSliceCount (pad, kSliceCounts[option]); });
+                    break;
+                }
+                case Kind::own:  setOwnParam (key, idx, in, v); break;
+                case Kind::text: break;
+                case Kind::param:
+                case Kind::padParam:
+                case Kind::fxParam:
+                    if (auto* p = resolveIdx (idx))
+                    {
+                        p->setValueNotifyingHost (p->convertTo0to1 (toPlain (idx, p, v)));
+                        if (PARAMS[idx].momentary && v > 0.5f)
+                            triggerHold[(size_t) idx].store (4 * kBlock);   // a rising edge for the engine, then back to 0
+                    }
+                    break;
             }
 
-            if (idx >= 0) reported[(size_t) idx] = currentNorm (idx);   // the host knows: no echo
+            reported[(size_t) idx] = currentNorm (idx);   // the host knows: no echo
         }
 
         int getParam (const char* key, char* buf, int len)
         {
             if (std::strcmp (key, "state") == 0) return saveState (buf, len);
-            if (std::strcmp (key, "status") == 0) return putCached (statusBuf, buf, len);
-            if (std::strcmp (key, "sl_info") == 0) return putCached (slInfoBuf, buf, len);
-            if (std::strcmp (key, "sl_sens") == 0) return put (buf, len, juce::String (juce::roundToInt (slSens.load() * 100.0f)));
-            if (std::strcmp (key, "sl_count") == 0) return put (buf, len, juce::String (slCountOption.load()));
-            if (std::strcmp (key, "smp_info") == 0) return putCached (smpInfoBuf, buf, len);
-            if (std::strcmp (key, "st_info") == 0) return putCached (stInfoBuf, buf, len);
-            if (std::strcmp (key, "note_info") == 0) return putCached (noteInfoBuf, buf, len);
-            if (std::strcmp (key, "smp_file_display") == 0) return put (buf, len, sampleName (smpIndex.load()));
-            if (const int ownIdx = paramIndex (key); ownIdx >= 0 && isOwnKey (key))
+
+            int idx = paramIndex (key);
+            if (idx >= 0)
             {
-                char num[32];
-                std::snprintf (num, sizeof num, "%g", ownValue (ownIdx));
-                return put (buf, len, num);
+                const auto& in = infoOf (idx);
+                switch (in.kind)
+                {
+                    case Kind::text:    return putText (in.text, buf, len);
+                    case Kind::kit:     return put (buf, len, juce::String (kitIndex.load()));
+                    case Kind::pad:     return put (buf, len, juce::String (selectedPad.load() + 1));
+                    case Kind::fxGroup: return put (buf, len, juce::String (fxGroup.load()));
+                    case Kind::slSens:  return put (buf, len, juce::String (juce::roundToInt (slSens.load() * 100.0f)));
+                    case Kind::slCount: return put (buf, len, juce::String (slCountOption.load()));
+                    case Kind::own:
+                    {
+                        char num[32];
+                        std::snprintf (num, sizeof num, "%g", ownValue (idx));
+                        return put (buf, len, num);
+                    }
+                    case Kind::param:
+                    case Kind::padParam:
+                    case Kind::fxParam:
+                        if (auto* p = resolveIdx (idx))
+                        {
+                            const float plain = fromPlain (idx, p, p->convertFrom0to1 (p->getValue()));
+                            if (dynamic_cast<juce::AudioParameterFloat*> (p) == nullptr)
+                                return put (buf, len, juce::String (juce::roundToInt (plain)));
+                            return put (buf, len, juce::String (plain, 4));
+                        }
+                        return 0;
+                }
             }
-            if (std::strcmp (key, "kit") == 0) return put (buf, len, juce::String (kitIndex.load()));
-            if (std::strcmp (key, "kit_display") == 0) return put (buf, len, kitName (kitIndex.load()));
+
+            // "<key>_display": a value as text
+            const size_t n = std::strlen (key);
+            if (n > 8 && std::strcmp (key + n - 8, "_display") == 0)
+            {
+                const std::string base (key, n - 8);
+                // worked out now, not from the 100 ms cache: MPC asks right after the knob moves
+                if (base == "kit")      return put (buf, len, kitName (selectedKit()));
+                if (base == "pad")      { const int p = selectedPad.load(); return put (buf, len, padText (p, proc->getSamples().getInfo (p))); }
+                if (base == "smp_file") return put (buf, len, selectedEntry().file.getFileName());
+                if (base == "sl_pos")
+                {
+                    const auto info = proc->getSamples().getInfo (selectedPad.load());
+                    if (info.buffer == nullptr) return put (buf, len, "-");
+                    return put (buf, len, seconds (info.buffer->getLengthSeconds() * slPosValue.load() / 998.0));
+                }
+                idx = paramIndex (base.c_str());
+                if (idx >= 0)
+                    if (auto* p = resolveIdx (idx)) return put (buf, len, p->getCurrentValueAsText());
+                return 0;
+            }
             if (startsWith (key, "kit:")) return put (buf, len, kitName (std::atoi (key + 4)));
-            if (std::strcmp (key, "pad") == 0) return put (buf, len, juce::String (selectedPad.load() + 1));
-            if (std::strcmp (key, "pad_display") == 0) return put (buf, len, padText (selectedPad.load()));
-            if (std::strcmp (key, "fx_group") == 0) return put (buf, len, juce::String (fxGroup.load()));
-
-            juce::String k (key);
-            const bool display = k.endsWith ("_display");
-            if (display) k = k.dropLastCharacters (8);
-
-            if (auto* p = resolve (k.toRawUTF8()))
-            {
-                if (display) return put (buf, len, p->getCurrentValueAsText());
-                const float plain = fromPlain (paramIndex (k.toRawUTF8()), p, p->convertFrom0to1 (p->getValue()));
-                if (dynamic_cast<juce::AudioParameterFloat*> (p) == nullptr)
-                    return put (buf, len, juce::String (juce::roundToInt (plain)));
-                return put (buf, len, juce::String (plain, 4));
-            }
             return 0;
         }
 
@@ -392,20 +528,55 @@ namespace
 
     private:
         //======================================================================
-        juce::RangedAudioParameter* resolve (const char* key) const
+        //  Twisted Breaks parameters, looked up once
+        //======================================================================
+        void buildPointers()
         {
             auto& apvts = proc->getParameters();
-            if (startsWith (key, "sp_"))
-                return apvts.getParameter (tb::params::padId (selectedPad.load(), key + 3));
-            if (std::strcmp (key, "sl_pick") == 0)
-                return apvts.getParameter (tb::params::padId (selectedPad.load(), tb::params::padSlice));
-            if (startsWith (key, "fx_"))
+            globalPtr.assign ((size_t) NPARAMS, nullptr);
+            padPtr.assign ((size_t) (NPARAMS * tb::kNumPads), nullptr);
+            groupPtr.assign ((size_t) (NPARAMS * tb::kNumGroups), nullptr);
+            for (int i = 0; i < NPARAMS; ++i)
             {
-                const int f = fxIdForKey (key + 3);
-                return f >= 0 ? apvts.getParameter (tb::fx::paramId (fxGroup.load(), f)) : nullptr;
+                const char* key = PARAMS[i].key;
+                switch (infoOf (i).kind)
+                {
+                    case Kind::padParam:
+                        for (int p = 0; p < tb::kNumPads; ++p)
+                            padPtr[(size_t) (p * NPARAMS + i)] = apvts.getParameter (std::strcmp (key, "sl_pick") == 0
+                                                                                      ? tb::params::padId (p, tb::params::padSlice)
+                                                                                      : tb::params::padId (p, key + 3));
+                        break;
+                    case Kind::fxParam:
+                        if (const int f = fxIdForKey (key + 3); f >= 0)
+                            for (int g = 0; g < tb::kNumGroups; ++g)
+                                groupPtr[(size_t) (g * NPARAMS + i)] = apvts.getParameter (tb::fx::paramId (g, f));
+                        break;
+                    case Kind::param:
+                        globalPtr[(size_t) i] = apvts.getParameter (juce::String::fromUTF8 (key));
+                        break;
+                    default: break;
+                }
             }
-            return apvts.getParameter (juce::String::fromUTF8 (key));
         }
+
+        juce::RangedAudioParameter* resolveIdx (int i) const
+        {
+            switch (infoOf (i).kind)
+            {
+                case Kind::padParam: return padPtr[(size_t) (selectedPad.load() * NPARAMS + i)];
+                case Kind::fxParam:  return groupPtr[(size_t) (fxGroup.load() * NPARAMS + i)];
+                case Kind::param:    return globalPtr[(size_t) i];
+                default:             return nullptr;
+            }
+        }
+
+        float raw (const juce::String& id) const
+        {
+            if (auto* v = proc->getParameters().getRawParameterValue (id)) return v->load();
+            return 0.0f;
+        }
+        float padRaw (int pad, const char* name) const { return raw (tb::params::padId (pad, name)); }
 
         /** A whole-number Twisted Breaks parameter shown on the MPC as a list of options (Break Bank 1-8):
             the MPC sends the option's index, the parameter wants its own number. */
@@ -427,23 +598,28 @@ namespace
             return plain;
         }
 
+        /** Where a parameter stands, for spotting changes (any consistent scale). Lock-free. */
         float currentNorm (int i) const
         {
-            const char* key = PARAMS[i].key;
-            if (std::strcmp (key, "pad") == 0) return (float) selectedPad.load();
-            if (std::strcmp (key, "fx_group") == 0) return (float) fxGroup.load();
-            if (std::strcmp (key, "kit") == 0) return (float) kitIndex.load();
-            if (std::strcmp (key, "sl_sens") == 0) return slSens.load();
-            if (std::strcmp (key, "sl_count") == 0) return (float) slCountOption.load() / 2.0f;
-            if (isOwnKey (key))
+            switch (infoOf (i).kind)
             {
-                const auto& pp = PARAMS[i];
-                const float v = ownValue (i);
-                if (pp.nopts > 1) return v / (float) (pp.nopts - 1);
-                return pp.max > pp.min ? (v - pp.min) / (pp.max - pp.min) : 0.0f;
+                case Kind::pad:     return (float) selectedPad.load();
+                case Kind::fxGroup: return (float) fxGroup.load();
+                case Kind::kit:     return (float) kitIndex.load();
+                case Kind::slSens:  return slSens.load();
+                case Kind::slCount: return (float) slCountOption.load() / 2.0f;
+                case Kind::text:    return 0.0f;
+                case Kind::own:
+                {
+                    const auto& pp = PARAMS[i];
+                    const float v = ownValue (i);
+                    if (pp.nopts > 1) return v / (float) (pp.nopts - 1);
+                    return pp.max > pp.min ? (v - pp.min) / (pp.max - pp.min) : 0.0f;
+                }
+                default:
+                    if (auto* p = resolveIdx (i)) return p->getValue();
+                    return 0.0f;
             }
-            if (auto* p = resolve (key)) return p->getValue();
-            return 0.0f;
         }
 
         static int16_t toInt16 (float x) noexcept
@@ -462,7 +638,7 @@ namespace
                 left -= frames;
                 h.store (left, std::memory_order_relaxed);
                 if (left <= 0)
-                    if (auto* p = resolve (PARAMS[i].key))
+                    if (auto* p = resolveIdx (i))
                         p->setValueNotifyingHost (0.0f);
             }
         }
@@ -481,17 +657,22 @@ namespace
 
             for (int i = 0; i < NPARAMS; ++i)
             {
-                if (PARAMS[i].string_display) continue;   // readouts: the wrapper polls their text
-                const char* key = PARAMS[i].key;
+                const auto& in = infoOf (i);
+                if (in.kind == Kind::text) continue;   // readouts: the wrapper polls their text
                 const float now = currentNorm (i);
-                const bool follows = (padMoved && (startsWith (key, "sp_") || startsWith (key, "sl_") || startsWith (key, "st_")))
-                                     || (groupMoved && startsWith (key, "fx_"));
+                const bool follows = (padMoved && (in.kind == Kind::padParam || in.own == Own::step || in.own == Own::slPos))
+                                     || (groupMoved && in.kind == Kind::fxParam);
                 if (follows || std::abs (now - reported[(size_t) i]) > 1.0e-4f)
                 {
                     reported[(size_t) i] = now;
                     changed[(size_t) i].store (true);
                 }
             }
+        }
+
+        void markChanged (const char* key)
+        {
+            if (const int i = paramIndex (key); i >= 0) changed[(size_t) i].store (true);
         }
 
         //======================================================================
@@ -521,6 +702,12 @@ namespace
             kitFiles = files;
         }
 
+        int kitCount() const
+        {
+            std::lock_guard<std::mutex> g (kitLock);
+            return kitNames.size();
+        }
+
         juce::String kitName (int i) const
         {
             std::lock_guard<std::mutex> g (kitLock);
@@ -528,9 +715,39 @@ namespace
             return "-";
         }
 
+        /** The KIT knob's value is any number 0..99; the kit it means wraps round the list, so every wheel
+            click (nudge_pct: one step each) shows the next kit and there is no dead end past the last one. */
+        int kitAt (int value) const
+        {
+            const int n = kitCount();
+            return n > 0 ? juce::jmax (0, value) % n : 0;
+        }
+
+        int selectedKit() const { return kitAt (kitIndex.load()); }
+
+        void selectKit (int value)
+        {
+            kitIndex.store (juce::jlimit (0, 99, value));
+            // Turning the knob looks for kits copied onto the device since the last look.
+            if (! rescanQueued.exchange (true))
+                juce::MessageManager::callAsync ([this] { rescanQueued = false; rescanKits(); });
+        }
+
+        /** PREV / NEXT: the kit before / after the selected one, loaded straight away. */
+        void stepKit (int delta)
+        {
+            const int n = kitCount();
+            if (n == 0) return;
+            const int k = juce::jlimit (0, n - 1, selectedKit() + delta);
+            kitIndex.store (k);
+            markChanged ("kit");
+            loadKit (k, false);
+        }
+
         void loadKit (int index, bool wait)
         {
             juce::File file;
+            juce::String name;
             {
                 std::lock_guard<std::mutex> g (kitLock);
                 if (! juce::isPositiveAndBelow (index, kitFiles.size()))
@@ -539,14 +756,19 @@ namespace
                     return;
                 }
                 file = kitFiles[index];
+                name = kitNames[index];
             }
 
-            auto start = [this, file]
+            auto start = [this, file, name]
             {
                 rescanKits();   // picks up kits copied onto the device since the last scan
                 const auto r = proc->getPresets().load (file);
-                setStatus (r.wasOk() ? "LOADING " + file.getFileNameWithoutExtension().toUpperCase()
-                                     : r.getErrorMessage().toUpperCase());
+                setStatus (r.wasOk() ? "LOADING " + name.toUpperCase() : r.getErrorMessage().toUpperCase());
+                if (r.wasOk())
+                {
+                    std::lock_guard<std::mutex> g (textLock);
+                    loadedKit = name;
+                }
             };
 
             if (! wait)
@@ -589,8 +811,24 @@ namespace
             status = s;
         }
 
-        /** Message thread, every 100 ms: what the screen's readouts and the slicer's controls
-            show, copied where the audio thread can read it without allocating. */
+        // Readout slots past the readout parameters: texts other parameters show as their value.
+        enum { tKitName = kNumTexts, tPadName, tEntryName, tSlPos, kAllTexts };
+
+        void setText (int slot, const juce::String& s)
+        {
+            std::snprintf (texts[(size_t) slot].data(), texts[(size_t) slot].size(), "%s", s.toRawUTF8());
+        }
+
+        int putText (int slot, char* buf, int len) const
+        {
+            if (buf == nullptr || len <= 0 || slot < 0) return 0;
+            std::lock_guard<std::mutex> g (cacheLock);
+            std::snprintf (buf, (size_t) len, "%s", texts[(size_t) slot].data());
+            return (int) std::strlen (buf) + 1;
+        }
+
+        /** Message thread, every 100 ms: what the screen's readouts, the slice screen and the slicer's
+            controls show, copied where the audio thread can read it without allocating. */
         void refreshInfo()
         {
             juce::String st;
@@ -607,7 +845,7 @@ namespace
             slCountOption.store (info.sliceCount <= 4 ? 0 : info.sliceCount <= 8 ? 1 : 2);
 
             juce::String sl = "PAD " + tb::padLabel (pad) + "  ";
-            if (info.status == tb::SampleManager::Status::empty)  sl << "EMPTY: LOAD A KIT";
+            if (info.status == tb::SampleManager::Status::empty)  sl << "EMPTY: LOAD A SAMPLE";
             else if (info.slicing)                                 sl << "SLICING...";
             else if (info.slices.isEmpty())                        sl << "NOT SLICED";
             else                                                   sl << info.slices.count << " SLICES";
@@ -626,22 +864,11 @@ namespace
                         sliceWhenLoaded[(size_t) p] = false;
                 }
 
-            // SAMPLES
-            juce::String smp;
-            {
-                std::lock_guard<std::mutex> g (fileLock);
-                const int n = sampleFiles.size(), i = juce::jlimit (0, juce::jmax (0, n - 1), smpIndex.load());
-                if (scanning.load() && n == 0)  smp = "LOOKING FOR SAMPLES...";
-                else if (n == 0)                smp = "NO SAMPLES: PUT WAVS IN A FOLDER CALLED  Twisted Breaks  ON YOUR SD CARD";
-                else                            smp << (i + 1) << " / " << n << "   " << sampleFiles[i].getFileName().toUpperCase();
-            }
-
             // STEPS
             int on = 0;
             for (int k = 0; k < tb::SequencerData::kSteps; ++k)
                 if (proc->getBridge().seq.get (pad, k).on) ++on;
-            int seqLen = 16;
-            if (auto* lp = proc->getParameters().getRawParameterValue (tb::params::seqLength)) seqLen = juce::roundToInt (lp->load());
+            const int seqLen = juce::roundToInt (raw (tb::params::seqLength));
             juce::String stp = "PAD " + tb::padLabel (pad) + "   " + juce::String (on) + (on == 1 ? " STEP" : " STEPS")
                              + "   LENGTH " + juce::String (seqLen);
 
@@ -657,84 +884,450 @@ namespace
                 nt << "LAST NOTE " << last << "  ->  " << (target >= 0 ? "PAD " + tb::padLabel (target) : juce::String ("NO PAD"));
             }
 
+            // KIT
+            juce::String loaded;
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                loaded = loadedKit;
+            }
+            const int nKits = kitCount(), sel = selectedKit();
+            const auto selName = kitName (sel);
+            juce::String ki = "PLAYING: " + (loaded.isEmpty() ? juce::String ("-") : loaded.toUpperCase())
+                            + "   |   KIT " + juce::String (sel + 1) + " OF " + juce::String (nKits);
+            if (selName != loaded && nKits > 0) ki << "   |   LOAD TO SWITCH";
+
+            releaseAudition();
+            const auto screen = refreshScreen (pad, info);
+            const auto sound = soundInfo (pad, info);
+            const auto browser = browserTexts();
+
             std::lock_guard<std::mutex> g (cacheLock);
-            copyText (statusBuf, st.toUpperCase());
-            copyText (slInfoBuf, sl);
-            copyText (smpInfoBuf, smp);
-            copyText (stInfoBuf, stp);
-            copyText (noteInfoBuf, nt);
+            setText (tStatus, st.toUpperCase());
+            setText (tSlInfo, sl);
+            setText (tStInfo, stp);
+            setText (tNoteInfo, nt);
+            setText (tKitInfo, ki);
+            setText (tKitName, selName);
+            setText (tPadName, padText (pad, info));
+            setText (tSlHead, screen.head);
+            setText (tSlFoot, screen.foot);
+            setText (tSlPos, screen.pos);
+            setText (tSpInfo, sound.pad);
+            setText (tSnd1, sound.line1);
+            setText (tSnd2, sound.line2);
+            setText (tSmpPath, browser.path);
+            setText (tSmpInfo, browser.info);
+            setText (tEntryName, browser.entry);
+            for (int r = 0; r < kRows; ++r) setText (tRow1 + r, browser.rows[(size_t) r]);
         }
 
-        //======================================================================
-        //  The host's own parameters (samples, steps, notes, save kit)
-        //======================================================================
-        static bool isOwnKey (const char* key)
+        juce::String padText (int pad, const tb::SampleManager::PadInfo& info) const
         {
-            return startsWith (key, "smp_") || startsWith (key, "st_") || startsWith (key, "note_") || std::strcmp (key, "kit_save") == 0;
+            const auto label = tb::padLabel (pad);
+            return info.name.isEmpty() ? label : label + " " + info.name.toUpperCase();
         }
 
+        //======================================================================
+        //  The slice screen: 64 columns of waveform, marker tabs, two lines of text
+        //======================================================================
+        struct ScreenText { juce::String head, foot, pos; };
+
+        int selectedSlice (int pad, const tb::SliceTable& t) const
+        {
+            if (t.isEmpty()) return 0;
+            return juce::jlimit (0, t.count - 1, juce::roundToInt (padRaw (pad, tb::params::padSlice)) - 1);
+        }
+
+        /** The span shown: the whole sample, or (ZOOM) the selected slice with a little either side. */
+        juce::Range<int> viewOf (const tb::SampleManager::PadInfo& info, int sel) const
+        {
+            const int n = info.buffer != nullptr ? info.buffer->getNumSamples() : 0;
+            if (n <= 0) return { 0, 1 };
+            if (! slZoom.load() || info.slices.isEmpty()) return { 0, n };
+            const auto r = info.slices.region (sel, n);
+            const int margin = juce::jmax (256, r.getLength() / 6);
+            return { juce::jmax (0, r.getStart() - margin), juce::jmin (n, r.getEnd() + margin) };
+        }
+
+        static juce::String seconds (double s) { return juce::String (s, s < 10.0 ? 3 : 2) + " s"; }
+
+        ScreenText refreshScreen (int pad, const tb::SampleManager::PadInfo& info)
+        {
+            ScreenText out;
+            const auto& buf = info.buffer;
+            const int n = buf != nullptr ? buf->getNumSamples() : 0;
+            const double rate = buf != nullptr ? buf->sourceSampleRate : kSampleRate;
+            const auto& t = info.slices;
+            const int sel = selectedSlice (pad, t);
+            const auto view = viewOf (info, sel);
+            const double startF = padRaw (pad, tb::params::padStart), endF = padRaw (pad, tb::params::padEnd);
+            const float head = proc->getBridge().padPlayhead[(size_t) pad].load (std::memory_order_relaxed);
+
+            float maxPeak = 0.0f;
+            if (n > 0)
+            {
+                const auto r = buf->peakRange (0, n);
+                maxPeak = juce::jmax (std::abs (r.getStart()), std::abs (r.getEnd()));
+            }
+
+            for (int c = 0; c < kWaveCols; ++c)
+            {
+                int level = 0, back = 0, mark = 0, tab = 0;
+                if (n > 0)
+                {
+                    const int c0 = view.getStart() + (int) ((int64_t) view.getLength() * c / kWaveCols);
+                    const int c1 = juce::jmax (c0 + 1, view.getStart() + (int) ((int64_t) view.getLength() * (c + 1) / kWaveCols));
+                    const auto r = buf->peakRange (c0, c1);
+                    const float pk = juce::jmax (std::abs (r.getStart()), std::abs (r.getEnd()));
+                    const float rel = maxPeak > 0.0f ? pk / maxPeak : 0.0f;
+                    level = rel < 0.004f ? 0 : juce::jlimit (1, kWaveLevels - 1, 1 + (int) (std::sqrt (rel) * (kWaveLevels - 1.01f)));
+
+                    const int mid = (c0 + c1) / 2;
+                    if (mid < startF * n || mid > endF * n)                                      back = 2;   // not played
+                    else if (! t.isEmpty() && t.sliceAt (mid) == sel)                           back = 1;
+                    for (int k = 0; k < t.count; ++k)
+                        if (t.starts[(size_t) k] >= c0 && t.starts[(size_t) k] < c1)
+                        {
+                            mark = 1;
+                            tab = k + 1 + (k == sel ? 16 : 0);
+                        }
+                    if (mark == 0 && head >= 0.0f)
+                    {
+                        const double hp = head * n;
+                        if (hp >= c0 && hp < c1) mark = 2;
+                    }
+                }
+                wave[(size_t) c].store ((back * 3 + mark) * kWaveLevels + level);
+                tabs[(size_t) c].store (tab);
+            }
+
+            if (n <= 0)
+            {
+                out.head = "PAD " + tb::padLabel (pad) + "   " + (info.status == tb::SampleManager::Status::loading ? juce::String ("LOADING...")
+                                                                                                                       : juce::String ("EMPTY"));
+                out.foot = "LOAD A SAMPLE ON THE SAMPLES PAGE";
+                out.pos = "-";
+                slPosValue.store (0);
+                return out;
+            }
+
+            const double len = n / rate;
+            out.head << "PAD " << tb::padLabel (pad) << "   " << info.name.toUpperCase() << "      " << seconds (len)
+                     << "   " << juce::String (rate / 1000.0, 1) << " kHz   " << (buf->getNumChannels() > 1 ? "STEREO" : "MONO");
+
+            if (info.slicing)       out.foot = "SLICING...";
+            else if (t.isEmpty())   out.foot = "NOT SLICED: AUTO SLICE, EQUAL, OR ADD A MARKER";
+            else
+            {
+                const auto r = t.region (sel, n);
+                out.foot << "SLICE " << (sel + 1) << " OF " << t.count << "   " << seconds (r.getLength() / rate)
+                         << "   STARTS AT " << seconds (r.getStart() / rate);
+                if (slZoom.load()) out.foot << "   |   ZOOM";
+            }
+            const int at = t.isEmpty() ? 0 : t.starts[(size_t) sel];
+            out.pos = seconds (at / rate);
+            slPosValue.store (juce::roundToInt (998.0 * at / n));
+            return out;
+        }
+
+        /** Slicer keys: AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD, ADD, DELETE, PLAY (queued to the message thread). */
+        void slicerAction (const char* key, int pad)
+        {
+            const std::string k (key);
+            juce::MessageManager::callAsync ([this, k, pad]
+            {
+                auto& samples = proc->getSamples();
+                const auto info = samples.getInfo (pad);
+                const int n = info.buffer != nullptr ? info.buffer->getNumSamples() : 0;
+                const int sel = selectedSlice (pad, info.slices);
+                if (k == "sl_auto")         samples.autoSlice (pad);
+                else if (k == "sl_equal")   samples.equalSlice (pad);
+                else if (k == "sl_reset")   samples.resetSlices (pad);
+                else if (k == "sl_unslice") samples.clearSlices (pad);
+                else if (k == "sl_spread")
+                {
+                    const int done = proc->spreadSlices (pad);
+                    setStatus (done > 0 ? "SPREAD " + juce::String (done) + " SLICES FROM PAD " + tb::padLabel (pad)
+                                        : "NOTHING TO SPREAD: SLICE PAD " + tb::padLabel (pad) + " FIRST");
+                }
+                else if (k == "sl_add" && n > 0)
+                {
+                    // splits the selected slice in two (an unsliced pad: in half) and selects the new one
+                    const auto r = info.slices.region (sel, n);
+                    if (r.getLength() < 4 * tb::SliceTable::kMinGap) return;
+                    const int at = r.getStart() + r.getLength() / 2;
+                    if (samples.addMarker (pad, at))
+                        setPadSlice (pad, samples.getInfo (pad).slices.sliceAt (at));
+                    else
+                        setStatus ("16 SLICES IS THE MOST: DELETE ONE FIRST");
+                }
+                else if (k == "sl_del" && ! info.slices.isEmpty())
+                {
+                    samples.deleteMarker (pad, sel);
+                    setPadSlice (pad, juce::jmax (0, sel - 1));
+                }
+                else if (k == "sl_play") audition (pad, sel);
+                refreshInfo();
+            });
+        }
+
+        /** The pad's SLICE parameter (which slice it plays, and the one the screen selects). */
+        void setPadSlice (int pad, int slice)
+        {
+            if (auto* p = proc->getParameters().getParameter (tb::params::padId (pad, tb::params::padSlice)))
+                p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (1, 16, slice + 1)));
+        }
+
+        /** Hear a slice (or the whole pad when it has none). Message thread. */
+        void audition (int pad, int slice)
+        {
+            auto& events = proc->getBridge().mikroEvents;
+            const auto info = proc->getSamples().getInfo (pad);
+            if (info.status != tb::SampleManager::Status::ready) return;
+            tb::ControllerHit h;
+            h.pad = (int8_t) pad;
+            h.velocity = 0.9f;
+            if (! info.slices.isEmpty())
+            {
+                h.kind = tb::ControllerHit::sliceOn;
+                h.slice = (uint8_t) (slice + 1);
+                events.push (h);
+                return;
+            }
+            h.kind = tb::ControllerHit::padOn;
+            events.push (h);
+            releasePadAt = juce::Time::getMillisecondCounter() + 700;   // refreshInfo() lets go of it
+            releasePad = pad;
+        }
+
+        /** Message thread: the end of a whole-pad audition. */
+        void releaseAudition()
+        {
+            if (releasePad < 0 || juce::Time::getMillisecondCounter() < releasePadAt) return;
+            tb::ControllerHit off;
+            off.kind = tb::ControllerHit::padOff;
+            off.pad = (int8_t) releasePad;
+            proc->getBridge().mikroEvents.push (off);
+            releasePad = -1;
+        }
+
+        /** A tap on the waveform: the slice under it is selected and played. */
+        void waveTap (int column)
+        {
+            const int pad = selectedPad.load();
+            juce::MessageManager::callAsync ([this, pad, column]
+            {
+                const auto info = proc->getSamples().getInfo (pad);
+                const int n = info.buffer != nullptr ? info.buffer->getNumSamples() : 0;
+                if (n <= 0) return;
+                const auto view = viewOf (info, selectedSlice (pad, info.slices));
+                const int at = view.getStart() + (int) ((int64_t) view.getLength() * (2 * column + 1) / (2 * kWaveCols));
+                const int slice = info.slices.isEmpty() ? 0 : info.slices.sliceAt (at);
+                if (! info.slices.isEmpty()) setPadSlice (pad, slice);
+                audition (pad, slice);
+                refreshInfo();
+            });
+        }
+
+        //======================================================================
+        //  What shapes the sound: the selected pad's playback, and the whole kit
+        //======================================================================
+        struct SoundText { juce::String pad, line1, line2; };
+
+        int effectiveStretch (int p) const
+        {
+            const int mode = juce::roundToInt (padRaw (p, tb::params::padMode));
+            return tb::params::effectiveStretch (juce::roundToInt (padRaw (p, tb::params::padStretch)),
+                                                 padRaw (p, tb::params::padSync) > 0.5f, padRaw (p, tb::params::padFit) > 0.5f,
+                                                 tb::params::isLoopMode (mode));
+        }
+
+        /** The pad's own tempo: ORIGINAL BPM when set, else what a synced loop of its region assumes. */
+        double padOwnBpm (int p, const tb::SampleManager::PadInfo& info) const
+        {
+            const double obpm = padRaw (p, tb::params::padOrigBpm);
+            if (obpm >= 40.0) return obpm;
+            if (info.buffer == nullptr) return 0.0;
+            const double span = juce::jmax (0.01, (double) padRaw (p, tb::params::padEnd) - padRaw (p, tb::params::padStart));
+            const double secs = info.buffer->getLengthSeconds() * span;
+            const double beats = tb::PadVoice::loopBeatsFor (secs);
+            return secs > 0.0 ? beats * 60.0 / secs : 0.0;
+        }
+
+        SoundText soundInfo (int pad, const tb::SampleManager::PadInfo& info) const
+        {
+            static const char* const modes[] = { "ONE-SHOT", "LOOP", "SLICE", "SEQ ONE", "SEQ LOOP", "LOOP CONT" };
+            static const char* const stretches[] = { "OFF", "REPITCH", "BEATS", "TEXTURE", "AKAI CLASSIC", "AKAI REVISED" };
+            static const char* const chars[] = { "CLEAN", "SP-1200", "MPC60", "S950", "LO-FI" };
+            SoundText out;
+            const double tempo = hostBpm.load (std::memory_order_relaxed);
+            const juce::String tempoText = tempo > 0.0 ? juce::String (juce::roundToInt (tempo)) + " BPM" : juce::String ("THE MPC TEMPO");
+
+            // The selected pad
+            if (info.status != tb::SampleManager::Status::ready)
+                out.pad = "PAD " + tb::padLabel (pad) + (info.status == tb::SampleManager::Status::loading ? " LOADING" : " IS EMPTY");
+            else
+            {
+                juce::StringArray parts;
+                const int mode = juce::jlimit (0, 5, juce::roundToInt (padRaw (pad, tb::params::padMode)));
+                const int eff = juce::jlimit (0, 5, effectiveStretch (pad));
+                parts.add (modes[mode]);
+                if (eff != tb::params::stretchOff)
+                    parts.add ("FOLLOWS MPC TEMPO: " + juce::String (juce::roundToInt (padOwnBpm (pad, info))) + " -> "
+                               + (tempo > 0.0 ? juce::String (juce::roundToInt (tempo)) : juce::String ("?")) + " BPM, " + stretches[eff]);
+                else if (tb::params::isLoopMode (mode))
+                    parts.add ("OWN SPEED");
+                const int ch = juce::jlimit (0, 4, juce::roundToInt (padRaw (pad, tb::params::padCharacter)));
+                if (ch > 0) parts.add (chars[ch]);
+                if (padRaw (pad, tb::params::padReverse) > 0.5f) parts.add ("REVERSED");
+                const float pitch = padRaw (pad, tb::params::padPitch);
+                if (std::abs (pitch) > 0.05f) parts.add ("PITCH " + juce::String (pitch > 0 ? "+" : "") + juce::String (pitch, 1));
+                out.pad = parts.joinIntoString ("  |  ");
+            }
+
+            // The kit: pads following the tempo, then FX, macros, character, limiter
+            juce::StringArray synced, character, reversed;
+            for (int p = 0; p < tb::kNumPads; ++p)
+            {
+                if (proc->getSamples().getInfo (p).status != tb::SampleManager::Status::ready) continue;
+                if (effectiveStretch (p) != tb::params::stretchOff) synced.add (tb::padLabel (p));
+                const int ch = juce::jlimit (0, 4, juce::roundToInt (padRaw (p, tb::params::padCharacter)));
+                if (ch > 0) character.add (tb::padLabel (p) + " " + chars[ch]);
+                if (padRaw (p, tb::params::padReverse) > 0.5f) reversed.add (tb::padLabel (p));
+            }
+            out.line1 = synced.isEmpty() ? "NO PAD IS STRETCHED TO " + tempoText
+                                         : "STRETCHED TO " + tempoText + ": PAD" + (synced.size() > 1 ? "S " : " ")
+                                               + synced.joinIntoString (", ") + "  (PAD PAGE: TEMPO SYNC / STRETCH)";
+
+            juce::StringArray items;
+            auto& bridge = proc->getBridge();
+            for (int g = 0; g < tb::kNumGroups; ++g)
+            {
+                const uint32_t mask = bridge.fxEngaged[(size_t) g].load (std::memory_order_relaxed);
+                juce::StringArray fx;
+                for (int f = 0; f < tb::fx::kNumFx; ++f)
+                    if (mask & (1u << f)) fx.add (juce::String (tb::fx::def (f).label).replace ("\n", " "));
+                if (! fx.isEmpty()) items.add ("FX " + juce::String::charToString ((juce::juce_wchar) ('A' + g)) + ": " + fx.joinIntoString (" "));
+            }
+            const uint32_t macros = bridge.macroActive.load (std::memory_order_relaxed);
+            for (int m = 0; m < tb::macro::kNumMacros; ++m)
+                if (macros & (1u << m)) items.add ("MACRO " + juce::String (tb::macro::def (m).name).toUpperCase());
+            if (! character.isEmpty()) items.add ("CHARACTER " + character.joinIntoString (", "));
+            if (! reversed.isEmpty()) items.add ("REVERSED " + reversed.joinIntoString (", "));
+            items.add (raw (tb::params::masterLimiter) > 0.5f ? "LIMITER ON" : "LIMITER OFF");
+            out.line2 = (items.size() == 1 ? "NO FX, MACROS OR CHARACTER ON  |  " : "") + items.joinIntoString ("  |  ");
+            return out;
+        }
+
+        //======================================================================
+        //  The host's own parameters
+        //======================================================================
         /** The value in the parameter's own units (an option's index, a number). Lock-free: any thread. */
         float ownValue (int i) const
         {
-            const char* key = PARAMS[i].key;
-            const int pad = selectedPad.load();
-            if (std::strcmp (key, "smp_file") == 0) return (float) smpIndex.load();
-            if (std::strcmp (key, "smp_slice") == 0) return smpSliceOnLoad.load() ? 1.0f : 0.0f;
-            if (std::strcmp (key, "st_pos") == 0) return (float) (proc->getBridge().seqStep.load() + 1);
-            if (std::strcmp (key, "note_base") == 0) return (float) noteBaseOption();
-            if (startsWith (key, "st_") && std::isdigit ((unsigned char) key[3]))
-                return proc->getBridge().seq.get (pad, std::atoi (key + 3) - 1).on ? 1.0f : 0.0f;
-            return 0.0f;   // triggers
+            const auto& in = infoOf (i);
+            switch (in.own)
+            {
+                case Own::smpFile:     return (float) cursor.load();
+                case Own::smpSlice:    return smpSliceOnLoad.load() ? 1.0f : 0.0f;
+                case Own::smpAudition: return smpAudition.load() ? 1.0f : 0.0f;
+                case Own::stPos:       return (float) (proc->getBridge().seqStep.load() + 1);
+                case Own::noteBase:    return (float) noteBaseOption();
+                case Own::step:        return proc->getBridge().seq.get (selectedPad.load(), in.sub).on ? 1.0f : 0.0f;
+                case Own::slPos:       return (float) slPosValue.load();
+                case Own::slZoom:      return slZoom.load() ? 1.0f : 0.0f;
+                case Own::wvTap:       return (float) kTapNone;
+                case Own::wave:        return (float) wave[(size_t) in.sub].load();
+                case Own::tab:         return (float) tabs[(size_t) in.sub].load();
+                case Own::trigger:
+                case Own::none:        return 0.0f;
+            }
+            return 0.0f;
         }
 
-        bool setOwnParam (const char* key, int idx, float v)
+        void setOwnParam (const char* key, int idx, const Info& in, float v)
         {
-            if (! isOwnKey (key) || idx < 0) return false;
             const int pad = selectedPad.load();
             const bool press = PARAMS[idx].momentary && v > 0.5f;
 
-            if (std::strcmp (key, "smp_file") == 0)
+            switch (in.own)
             {
-                smpIndex.store (juce::jmax (0, juce::roundToInt (v)));
-                // turning the selector finds samples copied onto a card since the last look
-                bool empty;
+                case Own::smpFile:     moveCursor (juce::roundToInt (v), false); return;
+                case Own::smpSlice:    smpSliceOnLoad.store (v > 0.5f); return;
+                case Own::smpAudition: smpAudition.store (v > 0.5f); if (v < 0.5f) stopPreview(); return;
+                case Own::stPos:       return;
+                case Own::noteBase:
                 {
-                    std::lock_guard<std::mutex> g (fileLock);
-                    empty = sampleFiles.isEmpty();
+                    const int option = juce::roundToInt (v);
+                    if (option >= 0 && option < 3) setNoteBase (kNoteBases[option]);
+                    return;
                 }
-                if (empty || juce::Time::getMillisecondCounter() - lastScanMs.load() > 3000) startSampleScan();
+                case Own::step:
+                {
+                    auto& seq = proc->getBridge().seq;
+                    auto s = seq.get (pad, in.sub);
+                    if (s.on != (v > 0.5f))
+                    {
+                        s.on = v > 0.5f;
+                        if (s.on && s.velocity <= 1) s.velocity = 100;
+                        seq.set (pad, in.sub, s);
+                    }
+                    return;
+                }
+                case Own::slPos:
+                {
+                    const int pos = juce::jlimit (0, 998, juce::roundToInt (v));
+                    slPosValue.store (pos);
+                    juce::MessageManager::callAsync ([this, pad, pos]
+                    {
+                        auto& samples = proc->getSamples();
+                        const auto info = samples.getInfo (pad);
+                        if (info.buffer == nullptr || info.slices.isEmpty()) return;
+                        samples.moveMarker (pad, selectedSlice (pad, info.slices), (int) ((int64_t) info.buffer->getNumSamples() * pos / 998));
+                        refreshInfo();
+                    });
+                    return;
+                }
+                case Own::slZoom:      slZoom.store (v > 0.5f); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
+                case Own::wvTap:
+                {
+                    const int c = juce::roundToInt (v);
+                    if (c >= 0 && c < kWaveCols) waveTap (c);
+                    changed[(size_t) idx].store (true);   // back to "None", so the same column can be tapped again
+                    return;
+                }
+                case Own::wave:
+                case Own::tab:
+                case Own::none:        return;
+                case Own::trigger:     break;
             }
-            else if (std::strcmp (key, "smp_slice") == 0)  smpSliceOnLoad.store (v > 0.5f);
-            else if (std::strcmp (key, "smp_load") == 0)   { if (press) loadSample (pad, smpIndex.load()); }
+
+            if (! press) return;
+            if (startsWith (key, "sl_"))                       slicerAction (key, pad);
+            else if (std::strcmp (key, "smp_load") == 0)       loadSelected (pad);
+            else if (std::strcmp (key, "smp_open") == 0)       openSelected (true);
+            else if (std::strcmp (key, "smp_back") == 0)       goBack();
+            else if (std::strcmp (key, "smp_play") == 0)       previewSelected();
+            else if (startsWith (key, "smp_row"))
+            {
+                const int row = std::atoi (key + 7) - 1;   // 0..6; the middle one is the selection
+                if (row == kRows / 2) openSelected (true);
+                else                  moveCursor (row - kRows / 2, true);
+            }
             else if (std::strcmp (key, "smp_clear") == 0)
             {
-                if (press) juce::MessageManager::callAsync ([this, pad]
+                juce::MessageManager::callAsync ([this, pad]
                 {
                     proc->getSamples().clearPad (pad);
                     setStatus ("CLEARED PAD " + tb::padLabel (pad));
                 });
             }
-            else if (std::strcmp (key, "st_clear") == 0)   { if (press) proc->getBridge().seq.clearLane (pad); }
-            else if (startsWith (key, "st_") && std::isdigit ((unsigned char) key[3]))
-            {
-                const int step = std::atoi (key + 3) - 1;
-                auto& seq = proc->getBridge().seq;
-                auto st = seq.get (pad, step);
-                if (st.on != (v > 0.5f))
-                {
-                    st.on = v > 0.5f;
-                    if (st.on && st.velocity <= 1) st.velocity = 100;
-                    seq.set (pad, step, st);
-                }
-            }
-            else if (std::strcmp (key, "note_base") == 0)
-            {
-                const int option = juce::roundToInt (v);
-                if (option >= 0 && option < 3) setNoteBase (kNoteBases[option]);
-            }
-            else if (std::strcmp (key, "note_learn") == 0) { if (press) proc->getEngine().startNoteLearn (pad); }
-            else if (std::strcmp (key, "kit_save") == 0)   { if (press) juce::MessageManager::callAsync ([this] { saveKitHere(); }); }
-            return true;
+            else if (std::strcmp (key, "st_clear") == 0)       proc->getBridge().seq.clearLane (pad);
+            else if (std::strcmp (key, "note_learn") == 0)     proc->getEngine().startNoteLearn (pad);
+            else if (std::strcmp (key, "kit_save") == 0)       juce::MessageManager::callAsync ([this] { saveKitHere(); });
+            else if (std::strcmp (key, "kit_load") == 0)       loadKit (selectedKit(), false);
+            else if (std::strcmp (key, "kit_prev") == 0)       stepKit (-1);
+            else if (std::strcmp (key, "kit_next") == 0)       stepKit (1);
         }
 
         static constexpr int kNoteBases[3] = { 36, 37, 48 };
@@ -761,75 +1354,166 @@ namespace
         }
 
         //======================================================================
-        //  Samples from the SD card (worker thread)
+        //  The sample browser: the MPC's drives (internal, SD, USB), folders, audition
         //======================================================================
-        juce::File samplesDir() const { return dataRoot.getChildFile ("Samples"); }
-
-        /** Where breaks are looked for: the plugin's own Samples folder, and a folder called
-            "Twisted Breaks" (or "Breaks") at the top of any card or drive the MPC has mounted. */
-        juce::Array<juce::File> sampleRoots() const
+        struct Entry
         {
-            juce::Array<juce::File> roots { samplesDir() };
-            const juce::File media ("/media");
-            if (media.isDirectory())
-                for (const auto& card : media.findChildFiles (juce::File::findDirectories, false))
-                    for (const char* name : { "Twisted Breaks", "Breaks" })
-                    {
-                        const auto f = card.getChildFile (name);
-                        if (f.isDirectory() && ! roots.contains (f)) roots.add (f);
-                    }
-            return roots;
+            juce::File file;
+            juce::String label;   // what the list shows
+            bool dir = false;
+        };
+
+        struct BrowserText
+        {
+            juce::String path, info, entry;
+            std::array<juce::String, kRows> rows;
+        };
+
+        juce::File samplesDir() const { return dataRoot.getChildFile ("Samples"); }
+        juce::File lastFolderFile() const { return dataRoot.getChildFile ("browser-folder.txt"); }
+
+        /** The top level: each drive MPC has mounted (once, however many names it has), the plugin's Samples folder
+            and the factory sounds. TBM_MEDIA moves "/media" (tests). */
+        std::vector<Entry> listRoots() const
+        {
+            std::vector<Entry> out;
+            std::set<std::pair<unsigned long, unsigned long>> seen;
+            auto add = [&] (const juce::File& f, const juce::String& label)
+            {
+                struct stat s {};
+                if (! f.isDirectory() || ::stat (f.getFullPathName().toRawUTF8(), &s) != 0) return;
+                if (! seen.insert ({ (unsigned long) s.st_dev, (unsigned long) s.st_ino }).second) return;
+                out.push_back ({ f, label, true });
+            };
+            const char* env = std::getenv ("TBM_MEDIA");
+            const juce::File media = env != nullptr && *env != 0 ? juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (env))
+                                                                  : juce::File ("/media");
+            auto drives = media.findChildFiles (juce::File::findDirectories, false);
+            drives.sort();
+            for (const auto& d : drives)
+            {
+                const auto name = d.getFileName();
+                if (name.startsWith ("acvs-") || name.startsWith (".")) continue;
+                if (name == "az01-internal")         add (d, "INTERNAL DRIVE");
+                else if (name == "az01-internal-sd") add (d, "INTERNAL SD");
+                else                                 add (d, "DRIVE  " + name);
+            }
+            if (env == nullptr) add (juce::File ("/sdcard"), "SDCARD");
+            add (samplesDir(), "PLUGIN SAMPLES FOLDER");
+            add (dataRoot.getChildFile ("Library").getChildFile ("Factory Sounds"), "FACTORY SOUNDS");
+            return out;
         }
 
-        void startSampleScan()
+        static std::vector<Entry> listFolder (const juce::File& dir)
         {
-            if (scanning.exchange (true)) return;
-            if (scanThread.joinable()) scanThread.join();
-            scanThread = std::thread ([this]
+            std::vector<Entry> dirs, files;
+            for (const auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles, false))
             {
-                juce::Array<juce::File> found;
-                std::function<void (const juce::File&, int)> walk = [&] (const juce::File& dir, int depth)
-                {
-                    if (scanAbort.load() || depth > 4 || found.size() >= 999) return;
-                    auto entries = dir.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles, false);
-                    entries.sort();
-                    for (const auto& f : entries)   // files first, then folders, each by name
-                        if (! f.isDirectory() && ! f.isSymbolicLink() && tb::SampleManager::isSupportedFile (f) && found.size() < 999)
-                            found.add (f);
-                    for (const auto& f : entries)
-                        if (f.isDirectory() && ! f.isSymbolicLink()) walk (f, depth + 1);
-                };
-                for (const auto& root : sampleRoots()) walk (root, 0);
+                if (dirs.size() + files.size() >= 999) break;
+                if (f.isDirectory())                             dirs.push_back ({ f, f.getFileName() + "   >", true });
+                else if (tb::SampleManager::isSupportedFile (f)) files.push_back ({ f, f.getFileName(), false });
+            }
+            auto byName = [] (const Entry& a, const Entry& b) { return a.file.getFileName().compareNatural (b.file.getFileName()) < 0; };
+            std::sort (dirs.begin(), dirs.end(), byName);
+            std::sort (files.begin(), files.end(), byName);
+            dirs.insert (dirs.end(), files.begin(), files.end());
+            return dirs;
+        }
 
+        /** Lists a folder (or the drives) on the worker; the cursor lands on `select` when it is there. */
+        void browse (const juce::File& dir, bool root, const juce::File& select)
+        {
+            pool.addJob ([this, dir, root, select]
+            {
+                auto list = root ? listRoots() : listFolder (dir);
+                auto roots = root ? list : listRoots();
+                int at = 0;
+                for (size_t i = 0; i < list.size(); ++i)
+                    if (list[i].file == select) at = (int) i;
                 {
                     std::lock_guard<std::mutex> g (fileLock);
-                    const auto current = juce::isPositiveAndBelow (smpIndex.load(), sampleFiles.size()) ? sampleFiles[smpIndex.load()] : juce::File();
-                    sampleFiles = found;
-                    const int keep = current == juce::File() ? -1 : found.indexOf (current);
-                    smpIndex.store (keep >= 0 ? keep : juce::jlimit (0, juce::jmax (0, found.size() - 1), smpIndex.load()));
+                    entries = std::move (list);
+                    rootEntries = std::move (roots);
+                    folder = root ? juce::File() : dir;
+                    atRoot = root;
+                    cursor.store (at);
                 }
-                lastScanMs.store (juce::Time::getMillisecondCounter());
-                scanning.store (false);
+                if (! root) lastFolderFile().replaceWithText (dir.getFullPathName());
+                else        lastFolderFile().deleteFile();
+                markChanged ("smp_file");
             });
         }
 
-        juce::String sampleName (int i) const
+        void browserStart()
         {
-            std::lock_guard<std::mutex> g (fileLock);
-            if (juce::isPositiveAndBelow (i, sampleFiles.size())) return sampleFiles[i].getFileNameWithoutExtension();
-            return "-";
+            const juce::File last (lastFolderFile().loadFileAsString().trim());
+            if (last.getFullPathName().isNotEmpty() && last.isDirectory()) browse (last, false, {});
+            else                                                           browse ({}, true, {});
         }
 
-        void loadSample (int pad, int index)
+        Entry selectedEntry() const
         {
-            juce::File file;
+            std::lock_guard<std::mutex> g (fileLock);
+            const int i = cursorIndex();
+            if (juce::isPositiveAndBelow (i, (int) entries.size())) return entries[(size_t) i];
+            return {};
+        }
+
+        /** The entry the SAMPLE knob means (fileLock held): its value wraps round the list, like KIT's,
+            so every click lands on an entry and there is no dead end past the last one. */
+        int cursorIndex() const
+        {
+            const int n = (int) entries.size();
+            return n > 0 ? juce::jmax (0, cursor.load()) % n : 0;
+        }
+
+        /** The knob (absolute, wraps), or a row tap (relative to the selection, stops at the ends). */
+        void moveCursor (int to, bool fromRow)
+        {
+            if (fromRow)
             {
                 std::lock_guard<std::mutex> g (fileLock);
-                if (! juce::isPositiveAndBelow (index, sampleFiles.size())) { setStatus ("NO SAMPLE SELECTED"); return; }
-                file = sampleFiles[index];
+                const int n = (int) entries.size();
+                cursor.store (juce::jlimit (0, juce::jmax (0, n - 1), cursorIndex() + to));
+                markChanged ("smp_file");
             }
+            else cursor.store (juce::jlimit (0, 998, to));
+            previewDue.store (juce::Time::getMillisecondCounter() + 300);   // audition once the knob rests
+        }
+
+        void openSelected (bool playFiles)
+        {
+            const auto e = selectedEntry();
+            if (e.file == juce::File()) return;
+            if (e.dir)           browse (e.file, false, {});
+            else if (playFiles)  previewFile (e.file);
+        }
+
+        void goBack()
+        {
+            juce::File here;
+            bool root;
+            std::vector<Entry> roots;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                here = folder;
+                root = atRoot;
+                roots = rootEntries;
+            }
+            if (root) return;
+            for (const auto& r : roots)
+                if (r.file == here) { browse ({}, true, here); return; }
+            browse (here.getParentDirectory(), false, here);
+        }
+
+        void loadSelected (int pad)
+        {
+            const auto e = selectedEntry();
+            if (e.file == juce::File()) { setStatus ("NOTHING SELECTED"); return; }
+            if (e.dir) { browse (e.file, false, {}); return; }
             const bool slice = smpSliceOnLoad.load();
-            juce::MessageManager::callAsync ([this, pad, file, slice]
+            stopPreview();
+            juce::MessageManager::callAsync ([this, pad, file = e.file, slice]
             {
                 proc->getSamples().loadFile (pad, file);
                 sliceWhenLoaded[(size_t) pad] = slice;
@@ -838,76 +1522,120 @@ namespace
             });
         }
 
+        void previewSelected()
+        {
+            const auto e = selectedEntry();
+            if (! e.dir && e.file != juce::File()) previewFile (e.file);
+        }
+
+        /** Decodes on the worker, plays through the engine's preview voice. A newer request wins. */
+        void previewFile (const juce::File& file)
+        {
+            const uint32_t gen = ++previewGen;
+            if (file.getSize() > 80 * 1024 * 1024) { setStatus ("TOO BIG TO AUDITION"); return; }
+            pool.addJob ([this, file, gen]
+            {
+                if (gen != previewGen.load()) return;
+                auto r = tb::SampleLoader::loadFile (file, formats);
+                if (gen != previewGen.load() || r.buffer == nullptr) return;
+                juce::MessageManager::callAsync ([this, buf = r.buffer, gen]
+                {
+                    if (gen == previewGen.load()) proc->getSamples().preview (buf);
+                });
+            });
+        }
+
+        void stopPreview()
+        {
+            ++previewGen;
+            juce::MessageManager::callAsync ([this] { proc->getSamples().preview (nullptr); });
+        }
+
+        /** Message thread: the browser's text, and an audition when the knob has rested on a file. */
+        BrowserText browserTexts()
+        {
+            BrowserText out;
+            std::vector<Entry> list;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                const int c = cursorIndex(), n = (int) entries.size();
+                for (int r = 0; r < kRows; ++r)
+                {
+                    const int i = c + r - kRows / 2;
+                    if (juce::isPositiveAndBelow (i, n)) out.rows[(size_t) r] = entries[(size_t) i].label;
+                }
+                if (n == 0) out.rows[kRows / 2] = atRoot ? "NO DRIVES FOUND" : "(NO FOLDERS OR AUDIO FILES HERE)";
+
+                // the path, from the drive's name down
+                if (atRoot) out.path = "DRIVES";
+                else
+                {
+                    out.path = folder.getFullPathName();
+                    for (const auto& r : rootEntries)
+                        if (folder == r.file || folder.isAChildOf (r.file))
+                        {
+                            out.path = r.label.replace ("  ", " ") + folder.getFullPathName().substring (r.file.getFullPathName().length());
+                            break;
+                        }
+                    out.path = out.path.replace ("/", "  /  ");
+                    if (out.path.length() > 80) out.path = "...  " + out.path.getLastCharacters (75);
+                }
+
+                const auto pad = tb::padLabel (selectedPad.load());
+                if (juce::isPositiveAndBelow (c, n))
+                {
+                    const auto& e = entries[(size_t) c];
+                    out.entry = e.file.getFileName();
+                    out.info << (c + 1) << " / " << n << "     "
+                             << (e.dir ? juce::String ("OPEN TO LOOK INSIDE") : "LOAD PUTS IT ON PAD " + pad);
+                }
+                else out.info = "PICK A DRIVE OR FOLDER";
+            }
+
+            // audition the file the cursor came to rest on
+            const uint32_t due = previewDue.load();
+            if (due != 0 && juce::Time::getMillisecondCounter() >= due)
+            {
+                previewDue.store (0);
+                const auto e = selectedEntry();
+                if (smpAudition.load() && ! e.dir && e.file != juce::File()) previewFile (e.file);
+                else if (e.dir) { ++previewGen; proc->getSamples().preview (nullptr); }
+            }
+            return out;
+        }
+
         //======================================================================
         //  SAVE KIT (message thread): the whole kit, samples inside, as "MPC Kit NNN"
         //======================================================================
         void saveKitHere()
         {
             auto& presets = proc->getPresets();
-            const auto folder = presets.presetsFolder (tb::PresetManager::Type::kit);
-            folder.createDirectory();
+            const auto dir = presets.presetsFolder (tb::PresetManager::Type::kit);
+            dir.createDirectory();
             juce::String name;
             for (int n = 1; n < 1000; ++n)
             {
                 name = "MPC Kit " + juce::String (n).paddedLeft ('0', 3);
-                if (! folder.getChildFile (name + ".tbkit").exists()) break;
+                if (! dir.getChildFile (name + ".tbkit").exists()) break;
             }
             tb::PresetManager::Meta meta;
             meta.type = tb::PresetManager::Type::kit;
             meta.name = name;
             meta.tags = { "MPC" };
             meta.created = juce::Time::getCurrentTime();
-            const auto r = presets.saveKit (folder.getChildFile (name + ".tbkit"), meta);
+            const auto r = presets.saveKit (dir.getChildFile (name + ".tbkit"), meta);
             if (r.failed()) { setStatus ("SAVE FAILED: " + r.getErrorMessage().toUpperCase()); return; }
             rescanKits();
             {
                 std::lock_guard<std::mutex> g (kitLock);
                 kitIndex.store (juce::jmax (0, kitNames.indexOf (name)));
             }
-            setStatus ("SAVED " + name.toUpperCase());
-        }
-
-        template <size_t N>
-        static void copyText (std::array<char, N>& dst, const juce::String& s)
-        {
-            std::snprintf (dst.data(), N, "%s", s.toRawUTF8());
-        }
-
-        template <size_t N>
-        int putCached (const std::array<char, N>& src, char* buf, int len) const
-        {
-            if (buf == nullptr || len <= 0) return 0;
-            std::lock_guard<std::mutex> g (cacheLock);
-            std::snprintf (buf, (size_t) len, "%s", src.data());
-            return (int) std::strlen (buf) + 1;
-        }
-
-        /** AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD on the selected pad (queued to the message thread). */
-        void slicerAction (const char* key, int pad)
-        {
-            const std::string k (key);
-            juce::MessageManager::callAsync ([this, k, pad]
             {
-                auto& samples = proc->getSamples();
-                if (k == "sl_auto")         samples.autoSlice (pad);
-                else if (k == "sl_equal")   samples.equalSlice (pad);
-                else if (k == "sl_reset")   samples.resetSlices (pad);
-                else if (k == "sl_unslice") samples.clearSlices (pad);
-                else if (k == "sl_spread")
-                {
-                    const int n = proc->spreadSlices (pad);
-                    setStatus (n > 0 ? "SPREAD " + juce::String (n) + " SLICES FROM PAD " + tb::padLabel (pad)
-                                     : "NOTHING TO SPREAD: SLICE PAD " + tb::padLabel (pad) + " FIRST");
-                }
-                refreshInfo();
-            });
-        }
-
-        juce::String padText (int pad) const
-        {
-            const auto info = proc->getSamples().getInfo (pad);
-            const auto label = tb::padLabel (pad);
-            return info.name.isEmpty() ? label : label + " " + info.name.toUpperCase();
+                std::lock_guard<std::mutex> g (textLock);
+                loadedKit = name;
+            }
+            markChanged ("kit");
+            setStatus ("SAVED " + name.toUpperCase());
         }
 
         //======================================================================
@@ -915,13 +1643,13 @@ namespace
         //======================================================================
         int saveState (char* buf, int len)
         {
-            juce::MemoryBlock raw;
-            MessageThread::run ([this, &raw] { proc->getStateInformation (raw); });
+            juce::MemoryBlock rawState;
+            MessageThread::run ([this, &rawState] { proc->getStateInformation (rawState); });
 
             juce::MemoryOutputStream packed;
             {
                 juce::GZIPCompressorOutputStream gz (packed, 9);
-                gz.write (raw.getData(), raw.getSize());
+                gz.write (rawState.getData(), rawState.getSize());
             }
             // TBM1:<kit>:<pad>:<fx group>:<the processor's state, gzipped, base64>
             const auto text = juce::String (kStatePrefix) + juce::String (kitIndex.load()) + ":" + juce::String (selectedPad.load())
@@ -940,18 +1668,22 @@ namespace
 
             juce::MemoryInputStream in (packed, false);
             juce::GZIPDecompressorInputStream gz (in);
-            juce::MemoryBlock raw;
-            juce::MemoryOutputStream out (raw, false);
+            juce::MemoryBlock rawState;
+            juce::MemoryOutputStream out (rawState, false);
             out.writeFromInputStream (gz, -1);
             out.flush();
-            if (raw.getSize() == 0) return;
+            if (rawState.getSize() == 0) return;
 
-            MessageThread::run ([this, &raw]
+            MessageThread::run ([this, &rawState]
             {
-                proc->setStateInformation (raw.getData(), (int) raw.getSize());
+                proc->setStateInformation (rawState.getData(), (int) rawState.getSize());
                 rescanKits();
             });
             kitIndex.store (juce::jmax (0, fields[0].getIntValue()));
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                loadedKit = "SAVED PROJECT";
+            }
             const int pad = juce::jlimit (0, tb::kNumPads - 1, fields[1].getIntValue());
             selectedPad.store (pad);
             proc->getBridge().selectedPad.store (pad);
@@ -963,11 +1695,13 @@ namespace
         //======================================================================
         std::unique_ptr<TwistedBreaksProcessor> proc;
         juce::File dataRoot;
+        std::vector<juce::RangedAudioParameter*> globalPtr, padPtr, groupPtr;
 
         juce::AudioBuffer<float> buffer;
         juce::MidiBuffer midi;
 
         double blockPpq = 0.0, bpm = 120.0;
+        std::atomic<double> hostBpm { 0.0 };
         bool   hasPosition = false, playing = false;
         int    framesSincePos = 0;
 
@@ -983,23 +1717,30 @@ namespace
         mutable std::mutex kitLock, textLock;
         juce::StringArray kitNames;
         juce::Array<juce::File> kitFiles;
-        juce::String status { "READY" };
+        juce::String status { "READY" }, loadedKit;
 
         // Read by the screen (and the audio thread's readout polls); written by refreshInfo().
         static constexpr int kSliceCounts[3] = { 4, 8, 16 };
         std::atomic<float> slSens { 0.5f };
-        std::atomic<int>   slCountOption { 2 };
+        std::atomic<int>   slCountOption { 2 }, slPosValue { 0 };
+        std::atomic<bool>  slZoom { false };
+        std::array<std::atomic<int>, kWaveCols> wave {}, tabs {};
         mutable std::mutex cacheLock;
-        std::array<char, 96> statusBuf { "READY" }, slInfoBuf {}, smpInfoBuf {}, stInfoBuf {}, noteInfoBuf {};
+        std::array<std::array<char, 100>, kAllTexts> texts {};
 
-        // Samples
+        // The sample browser
         mutable std::mutex fileLock;
-        juce::Array<juce::File> sampleFiles;
-        std::atomic<int>  smpIndex { 0 };
-        std::atomic<bool> smpSliceOnLoad { true }, scanning { false }, scanAbort { false };
-        std::atomic<uint32_t> lastScanMs { 0 };
-        std::thread scanThread;
+        std::vector<Entry> entries, rootEntries;
+        juce::File folder;
+        bool atRoot = true;
+        std::atomic<int>  cursor { 0 };
+        std::atomic<bool> smpSliceOnLoad { true }, smpAudition { true };
+        std::atomic<uint32_t> previewGen { 0 }, previewDue { 0 };
+        juce::AudioFormatManager formats;
         std::array<std::atomic<bool>, tb::kNumPads> sliceWhenLoaded {};
+        juce::ThreadPool pool { 1 };
+        int releasePad = -1;            // message thread only
+        uint32_t releasePadAt = 0;
 
         struct Ticker final : juce::Timer
         {

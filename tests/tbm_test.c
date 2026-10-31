@@ -3,7 +3,8 @@
  *   2. the selected-pad controls follow the PAD selector
  *   3. the factory kit's pattern plays from MPC's song position (no notes sent)
  *   4. state: saved, restored into a second instance, parameters equal; the state's size
- *   5. LOAD KIT switches kit
+ *   2b-2e. SLICE, STEPS, SETUP, the sample browser, the slice screen, what shapes the sound
+ *   5. the KIT knob stops at the last kit; PREV / NEXT / LOAD KIT switch kit
  *   6. two instances at once, then both closed (the shared message thread stops cleanly)
  * Exit 1 on any failure. */
 #include <math.h>
@@ -110,6 +111,7 @@ static AEffect *open_one(void) {
 
 int main(void) {
     char text[256], text2[256];
+    setenv("TBM_MEDIA", "fake-media", 1);   /* the drives the browser lists (2e) */
     ti.sampleRate = 44100; ti.tempo = 170; ti.num = 4; ti.den = 4;
     ti.flags = (1 << 10) | (1 << 9);   /* tempo + ppq valid, stopped */
 
@@ -205,27 +207,116 @@ int main(void) {
     CHECK(fabsf(plain(a, "note_base")) < 0.05f, "back to 36-51");
     set_plain(a, "pad", 1); run(a, 2);
 
-    /* 2e. SAMPLES: a WAV in the Samples folder, loaded onto pad 9 and sliced */
-    system("mkdir -p data/Samples/Jungle && cp 'data/Library/Factory Sounds/TB Break 170.wav' data/Samples/Jungle/my-break.wav");
-    settle(a, 3200);                                   /* turning the selector rescans when the last scan is over 3 s old */
-    set_plain(a, "smp_file", 1); run(a, 2); set_plain(a, "smp_file", 0);
-    for (int i = 0; i < 100; i++) { run(a, 4); usleep(20000); display(a, "smp_info", text); if (strstr(text, "MY-BREAK")) break; }
-    printf("     sample browser: '%s'\n", text);
-    CHECK(strstr(text, "MY-BREAK.WAV") != NULL, "the browser lists data/Samples/Jungle/my-break.wav");
+    /* 2e. SAMPLES: browse a drive (a fake one: TBM_MEDIA), open folders, load onto pad 9 and slice */
+    /* a fake MPC drive: fake-media/CARD/Breaks/{amen.wav, Jungle/} (the factory break, made by the first instance) */
+    if (system("rm -rf fake-media && mkdir -p fake-media/CARD/Breaks/Jungle"
+               " && cp 'data/Library/Factory Sounds/TB Break 170.wav' fake-media/CARD/Breaks/amen.wav") != 0) { printf("FAIL fake drive\n"); fails++; }
+    for (int i = 0; i < 8; i++) { a->setP(a, idx("smp_back"), 1); run(a, 2); a->setP(a, idx("smp_back"), 0); settle(a, 60); }
+    settle(a, 300);
+    display(a, "smp_path", text);
+    CHECK(strcmp(text, "DRIVES") == 0, "BACK climbs to the drive list ('%s')", text);
+    int found = -1;
+    for (int i = 0; i < 12 && found < 0; i++) {
+        set_plain(a, "smp_file", (float)i); settle(a, 120);
+        display(a, "smp_l4", text);
+        printf("     drive row %d: '%s'\n", i, text);
+        if (strstr(text, "DRIVE  CARD")) found = i;
+    }
+    CHECK(found >= 0, "the fake SD card is listed as a drive");
+    a->setP(a, idx("smp_open"), 1); run(a, 2); a->setP(a, idx("smp_open"), 0); settle(a, 300);
+    display(a, "smp_path", text);
+    CHECK(strstr(text, "DRIVE CARD") != NULL, "OPEN goes into it ('%s')", text);
+    display(a, "smp_l4", text);
+    CHECK(strstr(text, "Breaks") != NULL, "folders first: '%s'", text);
+    a->setP(a, idx("smp_row4"), 1); run(a, 2); a->setP(a, idx("smp_row4"), 0); settle(a, 300);   /* tap the selected row = open */
+    display(a, "smp_l4", text); display(a, "smp_l5", text2);
+    printf("     in Breaks: '%s' / '%s'\n", text, text2);
+    CHECK(strstr(text, "Jungle") != NULL && strstr(text2, "amen.wav") != NULL, "Breaks lists its folder, then its files");
+    a->setP(a, idx("smp_row5"), 1); run(a, 2); a->setP(a, idx("smp_row5"), 0); settle(a, 200);   /* tap the next row: it's selected */
+    display(a, "smp_l4", text);
+    CHECK(strstr(text, "amen.wav") != NULL, "tapping a row selects it ('%s')", text);
+    peak = 0; settle(a, 900);
+    CHECK(peak > 0.01, "resting on a file auditions it (peak %.3f)", peak);
     set_plain(a, "pad", 9); set_plain(a, "smp_slice", 1); run(a, 2);
     a->setP(a, idx("smp_load"), 1); run(a, 4); a->setP(a, idx("smp_load"), 0);
     for (int i = 0; i < 200; i++) { run(a, 4); usleep(30000); display(a, "sl_info", text); if (strstr(text, "PAD 09") && strstr(text, "SLICES") && !strstr(text, "NOT")) break; }
     printf("     pad 9 after LOAD: '%s'\n", text);
     CHECK(strstr(text, "PAD 09") && strstr(text, "SLICES") != NULL && strstr(text, "NOT") == NULL, "LOAD put it on pad 9 and sliced it ('%s')", text);
     display(a, "pad", text);
-    CHECK(strstr(text, "MY-BREAK") != NULL, "PAD readout names it ('%s')", text);
+    CHECK(strstr(text, "AMEN") != NULL, "PAD readout names it ('%s')", text);
     note(a, 1, 44, 110); peak = 0; run(a, 40); note(a, 0, 44, 0); run(a, 40);
     CHECK(peak > 0.01, "pad 9 (note 44) plays it (peak %.3f)", peak);
+    a->setP(a, idx("smp_back"), 1); run(a, 2); a->setP(a, idx("smp_back"), 0); settle(a, 300);
+    display(a, "smp_l4", text);
+    CHECK(strstr(text, "Breaks") != NULL, "BACK lands on the folder it came from ('%s')", text);
+
+    /* 2e2. the SLICE screen on pad 9 */
+    settle(a, 300);
+    display(a, "sl_head", text);
+    printf("     screen top: '%s'\n", text);
+    CHECK(strstr(text, "PAD 09") && strstr(text, "AMEN"), "screen names the pad and sample");
+    int lit = 0, marks = 0, selected = 0;
+    for (int c = 1; c <= 64; c++) {
+        char k[8]; snprintf(k, sizeof k, "wv_%02d", c);
+        int v = (int)lroundf(plain(a, k)); if (v % 9 > 0) lit++;
+        snprintf(k, sizeof k, "wt_%02d", c);
+        int t = (int)lroundf(plain(a, k)); if (t > 0) marks++; if (t > 16) selected++;
+    }
+    CHECK(lit > 20, "waveform columns show the break (%d of 64 lit)", lit);
+    CHECK(marks >= 8 && selected == 1, "marker tabs: %d markers, %d selected", marks, selected);
+    display(a, "sl_foot", text);
+    printf("     screen bottom: '%s'\n", text);
+    CHECK(strstr(text, "SLICE 1 OF") != NULL, "bottom line: slice 1 selected");
+    set_plain(a, "wv_tap", 40); run(a, 2); settle(a, 300);
+    display(a, "sl_foot", text);
+    printf("     after a tap on column 41: '%s'\n", text);
+    CHECK(strstr(text, "SLICE 1 OF") == NULL, "tapping the wave selects another slice");
+    CHECK(lroundf(plain(a, "wv_tap")) == 64, "the tap key goes back to None (%.0f)", plain(a, "wv_tap"));
+    display(a, "sl_foot", text2);
+    float before = plain(a, "sl_pos");
+    set_plain(a, "sl_pos", before + 20); run(a, 2); settle(a, 300);
+    float after = plain(a, "sl_pos");
+    CHECK(after > before + 5, "MOVE moves the selected marker (%.0f -> %.0f)", before, after);
+    int count0 = 0, count1 = 0;
+    sscanf(strstr(text2, "OF ") + 3, "%d", &count0);
+    a->setP(a, idx("sl_add"), 1); run(a, 2); a->setP(a, idx("sl_add"), 0); settle(a, 300);
+    display(a, "sl_foot", text); if (strstr(text, "OF ")) sscanf(strstr(text, "OF ") + 3, "%d", &count1);
+    CHECK(count1 == count0 + 1 || (count0 == 16 && count1 == 16), "ADD splits the slice (%d -> %d)", count0, count1);
+    a->setP(a, idx("sl_del"), 1); run(a, 2); a->setP(a, idx("sl_del"), 0); settle(a, 300);
+    display(a, "sl_foot", text); if (strstr(text, "OF ")) sscanf(strstr(text, "OF ") + 3, "%d", &count1);
+    CHECK(count1 == count0 || count0 == 16, "DELETE removes it again (%d)", count1);
+    set_plain(a, "sl_zoom", 1); run(a, 2); settle(a, 300);
+    display(a, "sl_foot", text);
+    CHECK(strstr(text, "ZOOM") != NULL, "ZOOM shows the selected slice ('%s')", text);
+    set_plain(a, "sl_zoom", 0); run(a, 2);
+    peak = 0; a->setP(a, idx("sl_play"), 1); run(a, 2); a->setP(a, idx("sl_play"), 0); settle(a, 200);
+    CHECK(peak > 0.01, "PLAY SLICE plays it (peak %.3f)", peak);
+
     a->setP(a, idx("smp_clear"), 1); run(a, 4); a->setP(a, idx("smp_clear"), 0);
     for (int i = 0; i < 20; i++) { run(a, 4); usleep(20000); }
     note(a, 1, 44, 110); peak = 0; run(a, 40); note(a, 0, 44, 0); run(a, 40);
     CHECK(peak < 1e-4, "CLEAR PAD empties it (peak %.5f)", peak);
+    settle(a, 200);
+    display(a, "sl_head", text);
+    CHECK(strstr(text, "EMPTY") != NULL, "the screen says so ('%s')", text);
     set_plain(a, "pad", 1); run(a, 2);
+
+    /* 2e3. what shapes the sound: pad 1's synced loop shows, and TEMPO SYNC turns it off */
+    set_plain(a, "sp_mode", 1); run(a, 2);             /* back to LOOP (SPREAD made it a slice pad) */
+    settle(a, 300);
+    display(a, "sp_info", text);
+    printf("     pad 1: '%s'\n", text);
+    CHECK(strstr(text, "FOLLOWS MPC TEMPO") != NULL, "PAD readout says pad 1 follows the tempo");
+    display(a, "snd_info1", text);
+    printf("     kit: '%s'\n", text);
+    CHECK(strstr(text, "01") != NULL, "KIT readout lists pad 01 as stretched");
+    display(a, "snd_info2", text);
+    printf("     kit: '%s'\n", text);
+    CHECK(strstr(text, "LIMITER") != NULL, "and the limiter's state");
+    set_plain(a, "sp_sync", 0); run(a, 2); settle(a, 300);
+    display(a, "sp_info", text);
+    CHECK(strstr(text, "OWN SPEED") != NULL, "TEMPO SYNC off: '%s'", text);
+    set_plain(a, "sp_sync", 1); run(a, 2);
 
     /* 2f. SAVE KIT: a new kit in the list, and it loads */
     a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0);
@@ -267,11 +358,25 @@ int main(void) {
         CHECK(peak > 0.01, "the restored instance plays pad 1 (peak %.3f)", peak);
     }
 
-    /* 5. LOAD KIT */
-    display(a, "status", text);
-    set_plain(a, "kit", 1); run(a, 2);
+    /* 5. KIT: past the last kit the knob wraps round; PREV / NEXT load straight away */
+    set_plain(a, "kit", 60); run(a, 4); settle(a, 100);
     display(a, "kit", text2);
-    printf("     kit 1: '%s'\n", text2);
+    CHECK(strcmp(text2, "-") != 0, "KIT knob far past the last kit still names one ('%s')", text2);
+    set_plain(a, "kit", 3); run(a, 4); settle(a, 100);   /* a big move lands outright */
+    float last = plain(a, "kit");
+    a->setP(a, idx("kit_prev"), 1); run(a, 4); a->setP(a, idx("kit_prev"), 0);
+    for (int i = 0; i < 100; i++) run(a, 20);
+    settle(a, 300);
+    CHECK(lroundf(plain(a, "kit")) == lroundf(last) - 1, "PREV steps back one kit (%.0f -> %.0f)", last, plain(a, "kit"));
+    display(a, "kit_info", text);
+    printf("     after PREV: '%s'\n", text);
+    CHECK(strstr(text, "PLAYING:") != NULL && strstr(text, "SWITCH") == NULL, "and loads it ('%s')", text);
+    a->setP(a, idx("kit_next"), 1); run(a, 4); a->setP(a, idx("kit_next"), 0);
+    for (int i = 0; i < 100; i++) run(a, 20);
+    CHECK(lroundf(plain(a, "kit")) == lroundf(last), "NEXT steps forward (%.0f)", plain(a, "kit"));
+    set_plain(a, "kit", last - 1); run(a, 2); settle(a, 200);   /* a wheel click down: one kit */
+    CHECK(lroundf(plain(a, "kit")) == lroundf(last) - 1, "one click of the knob = one kit (%.0f)", plain(a, "kit"));
+    set_plain(a, "kit", 1); run(a, 2); settle(a, 200);
     a->setP(a, idx("kit_load"), 1); run(a, 8); a->setP(a, idx("kit_load"), 0);
     for (int i = 0; i < 100; i++) run(a, 20);
     display(a, "status", text);

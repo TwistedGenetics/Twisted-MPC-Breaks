@@ -157,5 +157,49 @@ section("Setup", [
     trig("kit_save", "Save Kit"),
 ])
 
+# ---- 1.1: the SLICE screen (a waveform like the Mac app's CRT) ----------------------------------
+# The waveform is WAVE_COLS picture columns, each a whole number the engine sets: frame = look * 9 + level,
+# look = background (0 plain, 1 selected slice, 2 outside start/end) * 3 + mark (0 none, 1 slice marker, 2 playhead).
+# Above them, one tab per column: 0 none, 1..16 the slice marker starting there, 17..32 the same, selected.
+# Plain numbers, not options: an option the engine moves makes MPC rebuild its whole screen.
+WAVE_COLS = 64
+WAVE_LEVELS = 9
+WAVE_LOOKS = 9
+section("Slice screen", [
+    num("sl_pos", "Move Marker", 0, 998, 0, display="int", dynamic_display=True, nudge_pct=10),
+    trig("sl_add", "Add Marker"),
+    trig("sl_del", "Delete Marker"),
+    opts("sl_zoom", "Zoom", ["Whole", "Slice"], 0),
+    trig("sl_play", "Play Slice"),
+    readout("sl_head", "Screen Top"),
+    readout("sl_foot", "Screen Bottom"),
+    # a tap on the waveform: option c = column c; the engine puts it back on "None" so the same column taps again
+    opts("wv_tap", "Wave Tap", ["Col %d" % (c + 1) for c in range(WAVE_COLS)] + ["None"], WAVE_COLS),
+] + [num("wv_%02d" % (c + 1), "Wave %d" % (c + 1), 0, WAVE_LEVELS * WAVE_LOOKS - 1, 0, display="int")
+     for c in range(WAVE_COLS)]
+  + [num("wt_%02d" % (c + 1), "Marker %d" % (c + 1), 0, 32, 0, display="int") for c in range(WAVE_COLS)])
+
+# ---- 1.1: SAMPLES becomes a browser of the MPC's own drives ------------------------------------------
+BROWSER_ROWS = 7
+section("Browser", [
+    trig("smp_open", "Open"),
+    trig("smp_back", "Back"),
+    trig("smp_play", "Play Sample"),
+    opts("smp_audition", "Audition", ONOFF, 1),
+    readout("smp_path", "Folder"),
+] + [readout("smp_l%d" % (r + 1), "Row %d" % (r + 1)) for r in range(BROWSER_ROWS)]
+  + [trig("smp_row%d" % (r + 1), "Pick Row %d" % (r + 1)) for r in range(BROWSER_ROWS)])
+
+# ---- 1.1: what shapes the sound, tempo sync, kit stepping ------------------------------------------------
+section("Sound", [
+    opts("sp_sync", "Tempo Sync", ONOFF, 1),
+    readout("sp_info", "Pad Playback"),
+    readout("snd_info1", "Sound 1"),
+    readout("snd_info2", "Sound 2"),
+    trig("kit_prev", "Previous Kit"),
+    trig("kit_next", "Next Kit"),
+    readout("kit_info", "Kit Info"),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

@@ -427,11 +427,20 @@ class Tab:
         self.controls.append(dict(kind="keys", key=key, cx=cx, cy=cy, labels=labels, sw=sw, sh=sh, rows=rows,
                                   rects=rects, label_size=label_size))
 
-    def readout(self, key, cx, cy, w, h, tsize=24, name=None):
+    def readout(self, key, cx, cy, w, h, tsize=24, name=None, tcolor=VFD_HEX, talign="center", window=True):
         if name:
             self.caption(cx, cy - h / 2 - 16, name)
-        self.vfd_window(cx, cy, w, h)
-        self.controls.append(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize))
+        if window:
+            self.vfd_window(cx, cy, w, h)
+        self.controls.append(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize, tcolor=tcolor, talign=talign))
+
+    def hit(self, key, cx, cy, w, h):
+        """An invisible touch area firing a trigger (a browser row)."""
+        self.controls.append(dict(kind="hit", key=key, cx=cx, cy=cy, w=w, h=h))
+
+    def column(self, key, cx, cy, w, h, strip_name, frames):
+        """A display filmstrip shared by many columns (the slice screen): frames drawn once, by strip_name."""
+        self.controls.append(dict(kind="column", key=key, cx=cx, cy=cy, w=w, h=h, strip=strip_name, frames=frames))
 
     def lamp_row(self, key, cx, cy, n, pitch, first, count):
         """A row of small amber lamps, one lit by a parameter (0 = none): steps first .. first + count - 1
@@ -602,6 +611,7 @@ class Out:
                 os.remove(os.path.join(ART, f))
         os.makedirs(PREVIEW, exist_ok=True)
         self.lines = []
+        self.strips = {}
 
     def save(self, im, name):
         im.save(os.path.join(ART, name), optimize=True)
@@ -692,11 +702,33 @@ def render(tab, out):
             out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/%s.png frames=%d' %
                              (c["cx"], c["cy"] + Y_OFF, w, h, key, name, len(frames)))
         elif k == "readout":
-            out.lines.append('readout cx=%d cy=%d w=%d h=%d label="" key=%s box=0 tsize=%d tcolor=%s talign=center' %
-                             (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, c["tsize"], VFD_HEX))
+            out.lines.append('readout cx=%d cy=%d w=%d h=%d label="" key=%s box=0 tsize=%d tcolor=%s talign=%s' %
+                             (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, c["tsize"], c["tcolor"], c["talign"]))
+        elif k == "taps":
+            opts = ",".join([" "] * c["n"])
+            out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d img=art/clear.png img_on=art/clear.png' %
+                             (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"]))
+        elif k == "hit":
+            out.lines.append('button cx=%d cy=%d label="" key=%s img=art/clear.png img_on=art/clear.png w=%d h=%d ns=0' %
+                             (c["cx"], c["cy"] + Y_OFF, key, c["w"], c["h"]))
+        elif k == "column":
+            name = c["strip"]
+            if name not in out.strips:
+                frames = c["frames"]()
+                stp = Image.new("RGB", (c["w"], c["h"] * len(frames)))
+                for i, f in enumerate(frames):
+                    stp.paste(f, (0, i * c["h"]))
+                out.save(stp, name + ".png")
+                out.strips[name] = frames
+            frames = out.strips[name]
+            prev.paste(frames[0], (int(c["cx"] - c["w"] / 2), int(c["cy"] - c["h"] / 2)))
+            out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/%s.png frames=%d' %
+                             (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, name, len(frames)))
     for title, keys in tab.qlinks:
         out.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
     bg.save(os.path.join(ART, "tab_" + slug + ".png"), optimize=True)   # tab_: never a control's name
+    if tab.name == "SLICE":
+        demo_wave(prev, out)
     prev.convert("RGB").save(os.path.join(PREVIEW, slug + ".png"))
     return bg
 
@@ -705,15 +737,21 @@ def render(tab, out):
 #  The tabs
 # =================================================================================================
 def tab_kit():
-    t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_save", "master_gain", "master_limiter", "scene_view", "xfade", "xfade_curve"])], 101)
+    t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_prev", "kit_next", "kit_save", "master_gain", "master_limiter", "scene_view",
+                             "xfade", "xfade_curve"])], 101)
     t.panel(14, 64, 760, 270, "KIT SELECT")
-    t.knob("kit", 104, 196, 42, "KIT", bw=112, value=False)
-    t.readout("kit", 450, 170, 500, 60, tsize=30, name="LOADED KIT  /  SELECTED KIT")
-    t.button("kit_load", 340, 270, "LOAD KIT", w=200, h=56)
-    t.button("kit_save", 580, 270, "SAVE KIT", w=200, h=56)
+    t.knob("kit", 92, 196, 42, "KIT", bw=112, value=False)
+    t.readout("kit", 462, 150, 560, 56, tsize=30, name="SELECTED KIT")
+    t.readout("kit_info", 462, 208, 600, 34, tsize=18)
+    t.button("kit_prev", 232, 284, "◀ PREV", w=130, h=56)
+    t.button("kit_load", 384, 284, "LOAD KIT", w=160, h=56)
+    t.button("kit_next", 536, 284, "NEXT ▶", w=130, h=56)
+    t.button("kit_save", 690, 284, "SAVE KIT", w=140, h=56)
     t.panel(14, 344, 760, 270, "STATUS")
-    t.readout("status", 394, 440, 700, 52, tsize=22, name="PLANT STATUS")
-    t.tag(250, 545, ["MAC KITS: COPY .TBKIT FILES TO", "Synths/.../Twisted Breaks/data/Presets/Kits", "SAVE KIT STORES THIS KIT AS \"MPC KIT 001\"..."], 430, 72)
+    t.readout("status", 394, 412, 700, 48, tsize=22, name="PLANT STATUS")
+    t.caption(394, 476, "WHAT SHAPES THE SOUND")
+    t.readout("snd_info1", 394, 516, 720, 40, tsize=18)
+    t.readout("snd_info2", 394, 566, 720, 40, tsize=18)
     t.panel(786, 64, 480, 270, "MASTER")
     t.knob("master_gain", 900, 196, 42, "LEVEL", bw=120)
     t.toggle("master_limiter", 1120, 196, "LIMITER", w=150, h=62)
@@ -725,7 +763,7 @@ def tab_kit():
 
 
 def tab_pad():
-    keys = ["pad", "sp_gain", "sp_pitch", "sp_pan", "sp_start", "sp_end", "sp_velsens", "sp_slice",
+    keys = ["pad", "sp_gain", "sp_pitch", "sp_pan", "sp_start", "sp_end", "sp_velsens", "sp_sync",
             "sp_mode", "sp_stretch", "sp_char", "sp_reverse", "sp_choke", "sp_swap", "sp_swapq", "sp_group"]
     t = Tab("PAD", [("PAD", keys)], 202)
     t.panel(14, 64, 420, 228, "SELECTED PAD")
@@ -734,7 +772,8 @@ def tab_pad():
     t.panel(446, 64, 820, 228, "SOUND")
     for i, (k, n) in enumerate([("sp_gain", "GAIN"), ("sp_pitch", "PITCH"), ("sp_pan", "PAN"),
                                 ("sp_start", "START"), ("sp_end", "END"), ("sp_velsens", "VELOCITY")]):
-        t.knob(k, 528 + i * 131, 176, 36, n, bw=116)
+        t.knob(k, 528 + i * 131, 172, 36, n, bw=116)
+    t.readout("sp_info", 856, 266, 790, 32, tsize=18)
     t.panel(14, 302, 1252, 312, "PLAY")
     t.selector("sp_mode", 120, 410, 34, ["ONE", "LOOP", "SLICE", "SEQ 1", "SEQ L", "CONT"], "MODE")
     t.selector("sp_stretch", 330, 410, 34, ["OFF", "PITCH", "BEATS", "TEXT", "AKAI", "AK.R"], "STRETCH")
@@ -742,29 +781,167 @@ def tab_pad():
     t.knob("sp_slice", 730, 402, 34, "SLICE", bw=108)
     t.toggle("sp_reverse", 900, 402, "REVERSE", w=140, h=58)
     t.keys("sp_group", 1110, 402, ["A", "B", "C", "D"], 56, 52, name="GROUP")
-    t.keys("sp_choke", 190, 556, ["OFF", "1", "2", "3", "4"], 62, 50, name="CHOKE")
-    t.keys("sp_swap", 560, 556, ["OFF", "1", "2", "3", "4"], 62, 50, name="SWAP GROUP")
-    t.keys("sp_swapq", 940, 556, ["SLICE", "1/16", "BEAT", "BAR"], 78, 50, name="SWAP AT", label_size=14)
+    t.keys("sp_choke", 186, 556, ["OFF", "1", "2", "3", "4"], 60, 50, name="CHOKE")
+    t.keys("sp_swap", 540, 556, ["OFF", "1", "2", "3", "4"], 60, 50, name="SWAP GROUP")
+    t.keys("sp_swapq", 900, 556, ["SLICE", "1/16", "BEAT", "BAR"], 76, 50, name="SWAP AT", label_size=14)
+    t.toggle("sp_sync", 1170, 556, "SYNC", w=150, h=56, name="TEMPO SYNC")
     return t
 
 
+# ---- the slice screen: Twisted Breaks' green CRT, as picture columns the engine sets ---------------------------
+WAVE_COLS, WAVE_LEVELS = 64, 9           # tools/make_params.py
+COL_W, WAVE_H, TAB_H = 16, 150, 24
+WAVE_X0 = 640 - WAVE_COLS * COL_W // 2   # 128
+TAB_CY, WAVE_CY = 130, 142 + WAVE_H // 2
+GLASS = (7, 19, 11)
+PHOSPHOR = (125, 255, 110)
+SEL_WASH = (46, 33, 9)
+DIM_GLASS = (4, 11, 7)
+
+
+def crt_background(w, h, look, centre=True):
+    """The CRT glass (2x px): scanlines and a faint centre graticule. look 0 plain, 1 selected slice, 2 not played."""
+    base = (GLASS, SEL_WASH, DIM_GLASS)[look]
+    im = Image.new("RGB", (w, h), base)
+    d = ImageDraw.Draw(im)
+    for y in range(0, h, 2 * SS):
+        d.line((0, y, w, y), fill=tuple(max(0, c - 4) for c in base))
+    if centre:
+        d.line((0, h // 2, w, h // 2), fill=(26, 58, 30) if look != 1 else (80, 58, 20))
+    return im
+
+
+def wave_frames():
+    """Column frames: (background * 3 + mark) * 9 + level. mark 0 none, 1 slice marker, 2 playhead."""
+    w, h = COL_W * SS, WAVE_H * SS
+    rnd = random.Random(1979)
+    lines = [rnd.uniform(0.45, 1.0) for _ in range(w // SS)]   # a waveform's grain inside each column
+    frames = []
+    for look in range(3):
+        for mark in range(3):
+            for level in range(WAVE_LEVELS):
+                im = crt_background(w, h, look)
+                d = ImageDraw.Draw(im)
+                col = PHOSPHOR if look != 2 else (52, 112, 50)
+                hh = (h / 2 - 6 * SS) * level / (WAVE_LEVELS - 1)
+                if level > 0:
+                    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                    ImageDraw.Draw(glow).rectangle((0, h / 2 - hh, w, h / 2 + hh), fill=col + (60,))
+                    im.paste(glow.filter(ImageFilter.GaussianBlur(3 * SS)), (0, 0), glow.filter(ImageFilter.GaussianBlur(3 * SS)))
+                    for x, g in enumerate(lines):
+                        a = hh * g
+                        d.line((x * SS, h / 2 - a, x * SS, h / 2 + a), fill=col, width=SS)
+                if mark == 1:
+                    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                    ImageDraw.Draw(glow).rectangle((0, 0, 3 * SS, h), fill=AMBER + (150,))
+                    g = glow.filter(ImageFilter.GaussianBlur(2 * SS))
+                    im.paste(g, (0, 0), g)
+                    d.rectangle((0, 0, SS + 1, h), fill=AMBER)
+                elif mark == 2:
+                    d.rectangle((w // 2 - SS, 0, w // 2 + SS - 1, h), fill=(225, 255, 225))
+                frames.append(im.resize((COL_W, WAVE_H), Image.LANCZOS))
+    return frames
+
+
+def tab_frames():
+    """Marker tabs above the columns: 0 none, 1..16 a slice's number, 17..32 the same, selected (lit)."""
+    w, h = COL_W * SS, TAB_H * SS
+    frames = []
+    for v in range(33):
+        im = crt_background(w, h, 0, centre=False)
+        if v > 0:
+            n, lit = (v - 1) % 16 + 1, v > 16
+            d = ImageDraw.Draw(im)
+            d.rounded_rectangle((0, 2 * SS, w - SS, h - 2 * SS), radius=2 * SS, fill=AMBER if lit else (150, 98, 28))
+            d.text((w / 2, h / 2), str(n), font=font(12 if n < 10 else 10), fill=(26, 14, 2), anchor="mm")
+        frames.append(im.resize((COL_W, TAB_H), Image.LANCZOS))
+    return frames
+
+
+def crt_screen(t):
+    """The screen's bezel and glass, drawn into the tab (the columns sit on top)."""
+    hi, d = t.hi, t.draw
+    box = (30, 74, 1250, 346)
+    soft_shadow(hi, tuple(v * SS for v in box), 8 * SS, 5 * SS, 220)
+    d.rounded_rectangle(tuple(v * SS for v in box), radius=16 * SS, fill=(14, 15, 14), outline=(60, 64, 58), width=2 * SS)
+    glass = (44, 82, 1236, 338)
+    d.rounded_rectangle(tuple(v * SS for v in glass), radius=12 * SS, fill=GLASS)
+    for y in range(glass[1] * SS, glass[3] * SS, 2 * SS):
+        d.line((glass[0] * SS + 6 * SS, y, glass[2] * SS - 6 * SS, y), fill=(4, 15, 8))
+    # graticule beside the trace, and dB marks
+    y0, y1 = 142, 142 + WAVE_H
+    for x in (WAVE_X0 - 6, WAVE_X0 + WAVE_COLS * COL_W + 6):
+        d.line((x * SS, y0 * SS, x * SS, y1 * SS), fill=(26, 58, 30), width=SS)
+    d.line((60 * SS, (y0 + y1) / 2 * SS, (WAVE_X0 - 10) * SS, (y0 + y1) / 2 * SS), fill=(26, 58, 30), width=SS)
+    d.line(((WAVE_X0 + WAVE_COLS * COL_W + 10) * SS, (y0 + y1) / 2 * SS, 1220 * SS, (y0 + y1) / 2 * SS), fill=(26, 58, 30), width=SS)
+    f = font(11)
+    for frac, lab in ((0.0, "0"), (0.5, "-6"), (1.0, "0")):
+        y = y0 + 6 + (y1 - y0 - 12) * frac
+        d.text(((WAVE_X0 - 14) * SS, y * SS), lab, font=f, fill=(60, 120, 60), anchor="rm")
+    d.text(((WAVE_X0 + WAVE_COLS * COL_W + 14) * SS, (y0 + y1) / 2 * SS), "TAP\nA\nSLICE", font=font(11), fill=(60, 120, 60),
+           anchor="lm", spacing=2 * SS)
+    # the glass's sheen
+    g = Image.new("RGBA", hi.size, (0, 0, 0, 0))
+    ImageDraw.Draw(g).rounded_rectangle((glass[0] * SS, glass[1] * SS, glass[2] * SS, (glass[1] + 60) * SS), radius=12 * SS,
+                                        fill=(255, 255, 255, 6))
+    hi.alpha_composite(g)
+
+
+def demo_wave(prev, out):
+    """The preview only: what the screen looks like with a sliced break on it (slice 5 selected, playing)."""
+    rnd = random.Random(5)
+    hits = [0, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61]
+    sel = 4
+    for c in range(WAVE_COLS):
+        k = max(i for i, h in enumerate(hits) if h <= c)
+        since = c - hits[k]
+        level = max(1, int(8 * (0.92 ** (since * 3)) * rnd.uniform(0.75, 1.0)))
+        mark = 1 if c in hits else (2 if c == 23 else 0)
+        look = 1 if k == sel else 0
+        f = out.strips["slice_wave"][(look * 3 + mark) * WAVE_LEVELS + level]
+        prev.paste(f, (WAVE_X0 + c * COL_W, 142))
+        tab = (k + 1 + (16 if k == sel else 0)) if c in hits else 0
+        prev.paste(out.strips["slice_tabs"][tab], (WAVE_X0 + c * COL_W, TAB_CY - TAB_H // 2))
+    d = ImageDraw.Draw(prev)
+    green = (141, 255, 106)
+    d.text((640, 100), "PAD 01   TB BREAK 170      2.824 s   44.1 kHz   MONO", font=font(18, False), fill=green, anchor="mm")
+    d.text((640, 318), "SLICE 5 OF 16   0.176 s   STARTS AT 0.706 s", font=font(18, False), fill=green, anchor="mm")
+
+
 def tab_slice():
-    keys = ["pad", "sl_pick", "sl_sens", "sl_count", "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread"]
+    keys = ["pad", "sl_pick", "sl_pos", "sl_sens", "sl_count", "sl_add", "sl_del", "sl_zoom",
+            "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread", "sl_play"]
     t = Tab("SLICE", [("SLICE", keys)], 707)
-    t.panel(14, 64, 420, 228, "SELECTED PAD")
-    t.knob("pad", 96, 186, 40, "PAD", value=False)
-    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE")
-    t.panel(446, 64, 820, 228, "SLICER")
-    t.knob("sl_sens", 540, 184, 38, "SENSITIVITY", bw=124)
-    t.keys("sl_count", 748, 184, ["4", "8", "16"], 80, 60, name="COUNT")
-    t.button("sl_auto", 990, 184, "AUTO\nSLICE", w=180, h=84)
-    t.button("sl_equal", 1170, 184, "EQUAL", w=150, h=84)
-    t.panel(14, 302, 1252, 312, "SLICES")
-    t.readout("sl_info", 530, 366, 900, 48, tsize=28)
-    t.keys("sl_pick", 530, 484, [str(i + 1) for i in range(16)], 116, 60, rows=2, label_size=20)
-    t.button("sl_reset", 1148, 400, "RESET", w=190, h=60)
-    t.button("sl_unslice", 1148, 476, "UNSLICE", w=190, h=60)
-    t.button("sl_spread", 1148, 556, "SPREAD", w=190, h=66, label_size=19)
+    crt_screen(t)
+    green = "8dff6a"
+    t.readout("sl_head", 640, 100, 1150, 30, tsize=20, tcolor=green, window=False)
+    t.readout("sl_foot", 640, 318, 1150, 30, tsize=20, tcolor=green, window=False)
+    for c in range(WAVE_COLS):
+        cx = WAVE_X0 + c * COL_W + COL_W // 2
+        t.column("wt_%02d" % (c + 1), cx, TAB_CY, COL_W, TAB_H, "slice_tabs", tab_frames)
+        t.column("wv_%02d" % (c + 1), cx, WAVE_CY, COL_W, WAVE_H, "slice_wave", wave_frames)
+    # touch: one invisible key per column, plus "None" (where the engine parks it) off the trace's right end
+    n = WAVE_COLS + 1
+    sw = COL_W - 2
+    t.controls.append(dict(kind="taps", key="wv_tap", cx=WAVE_X0 + 1 + (n * sw + (n - 1) * 2) // 2, cy=TAB_CY - TAB_H // 2 + (TAB_H + WAVE_H) // 2,
+                           n=n, sw=sw, sh=TAB_H + WAVE_H))
+
+    t.panel(14, 356, 1252, 258, "SLICER")
+    t.knob("pad", 90, 468, 34, "PAD", bw=110)
+    t.knob("sl_pick", 220, 468, 34, "SLICE", bw=110)
+    t.knob("sl_pos", 350, 468, 34, "MOVE", bw=110)
+    t.knob("sl_sens", 480, 468, 34, "SENS", bw=110)
+    t.keys("sl_count", 640, 470, ["4", "8", "16"], 62, 56, name="COUNT")
+    t.button("sl_add", 800, 470, "ADD", w=120, h=64)
+    t.button("sl_del", 935, 470, "DELETE", w=120, h=64)
+    t.toggle("sl_zoom", 1070, 470, "ZOOM", w=120, h=64)
+    t.button("sl_play", 1195, 470, "PLAY", w=110, h=64)
+    t.button("sl_auto", 130, 576, "AUTO SLICE", w=200, h=60)
+    t.button("sl_equal", 336, 576, "EQUAL", w=170, h=60)
+    t.button("sl_reset", 520, 576, "RESET", w=160, h=60)
+    t.button("sl_unslice", 696, 576, "UNSLICE", w=160, h=60)
+    t.button("sl_spread", 876, 576, "SPREAD", w=170, h=60)
+    t.tag(1120, 576, ["TAP THE WAVE: PICK + HEAR A SLICE", "MOVE: SHIFT ITS MARKER", "ADD SPLITS IT, DELETE MERGES IT"], 250, 62)
     return t
 
 
@@ -775,17 +952,39 @@ def selected_pad_panel(t):
 
 
 def tab_samples():
-    t = Tab("SAMPLES", [("SAMPLES", ["pad", "smp_file", "smp_load", "smp_clear", "smp_slice"])], 808)
-    selected_pad_panel(t)
-    t.panel(446, 64, 820, 228, "LOAD ONTO THE PAD")
-    t.button("smp_load", 610, 184, "LOAD", w=230, h=90, label_size=24)
-    t.toggle("smp_slice", 860, 184, "SLICE\nON LOAD", w=170, h=90)
-    t.button("smp_clear", 1100, 184, "CLEAR\nPAD", w=170, h=90)
-    t.panel(14, 302, 1252, 312, "SAMPLE BROWSER")
-    t.knob("smp_file", 120, 440, 52, "SAMPLE", value=False)
-    t.readout("smp_info", 720, 420, 1040, 64, tsize=28)
-    t.tag(700, 540, ["PUT YOUR BREAKS (WAV / AIFF / FLAC) IN A FOLDER CALLED  Twisted Breaks", "AT THE TOP OF YOUR SD CARD OR USB DRIVE (SUB-FOLDERS ARE FINE).",
-                     "TURN THE SAMPLE KNOB TO LOOK AGAIN."], 760, 72)
+    keys = ["pad", "smp_file", "smp_open", "smp_back", "smp_play", "smp_audition", "smp_load", "smp_slice", "smp_clear"]
+    t = Tab("SAMPLES", [("SAMPLES", keys)], 808)
+    t.panel(14, 64, 880, 550, "BROWSER")
+    t.readout("smp_path", 520, 112, 720, 38, tsize=20, talign="left")
+    t.knob("smp_file", 76, 316, 40, "SAMPLE", value=False)
+    pitch = 50
+    for r in range(7):
+        cy = 312 + (r - 3) * pitch
+        mid = r == 3
+        if mid:   # the selection: a lit bar behind the middle row
+            d = t.draw
+            box = (134, cy - 22, 874, cy + 22)
+            g = Image.new("RGBA", t.hi.size, (0, 0, 0, 0))
+            ImageDraw.Draw(g).rounded_rectangle(tuple(v * SS for v in box), radius=5 * SS, fill=AMBER + (90,))
+            t.hi.alpha_composite(g.filter(ImageFilter.GaussianBlur(6 * SS)))
+            d.rounded_rectangle(tuple(v * SS for v in box), radius=5 * SS, fill=(58, 38, 10), outline=AMBER, width=2 * SS)
+        else:
+            t.vfd_window(504, cy, 740, 42)
+        t.readout("smp_l%d" % (r + 1), 510, cy, 720, 42, tsize=26 if mid else 22, tcolor="ffd37a" if mid else "c9b48a",
+                  talign="left", window=False)
+        t.hit("smp_row%d" % (r + 1), 504, cy, 740, pitch - 4)
+    t.readout("smp_info", 470, 512, 800, 32, tsize=18)
+    t.button("smp_back", 130, 572, "◀ BACK", w=160, h=58)
+    t.button("smp_open", 310, 572, "OPEN", w=160, h=58)
+    t.button("smp_play", 490, 572, "PLAY", w=160, h=58)
+    t.toggle("smp_audition", 690, 572, "AUDITION", w=190, h=58)
+    t.panel(906, 64, 360, 550, "LOAD ONTO THE PAD")
+    t.knob("pad", 1086, 178, 40, "PAD", value=False)
+    t.readout("pad", 1086, 260, 320, 44, tsize=22)
+    t.button("smp_load", 1086, 350, "LOAD", w=300, h=80, label_size=26)
+    t.toggle("smp_slice", 1008, 452, "SLICE\nON LOAD", w=144, h=72)
+    t.button("smp_clear", 1164, 452, "CLEAR\nPAD", w=144, h=72)
+    t.tag(1086, 552, ["TURN SAMPLE OR TAP A ROW.", "TAP THE LIT ROW: OPEN / PLAY.", "AUDITION PLAYS AS YOU GO."], 300, 64)
     return t
 
 
