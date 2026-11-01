@@ -93,6 +93,27 @@ static void run(AEffect *a, int blocks) {
 /* real time for the plugin's own threads (its message thread refreshes the readouts every 100 ms) */
 static void settle(AEffect *a, int ms) { for (int t = 0; t < ms; t += 20) { run(a, 2); usleep(20000); } }
 
+/* the browser's touch list: the row (1..8) whose text holds sub, or the lit one */
+static int find_row(AEffect *a, const char *sub) {
+    char k[16], t[256];
+    for (int r = 1; r <= 8; r++) { snprintf(k, sizeof k, "smp_r_%d", r); display(a, k, t); if (strstr(t, sub)) return r; }
+    return -1;
+}
+static int lit_row(AEffect *a) {
+    char k[16];
+    for (int r = 1; r <= 8; r++) { snprintf(k, sizeof k, "smp_r_%d", r); if (a->getP(a, idx(k)) > 0.5f) return r; }
+    return -1;
+}
+static void tap_row(AEffect *a, int r) {
+    char k[16]; snprintf(k, sizeof k, "smp_r_%d", r);
+    a->setP(a, idx(k), a->getP(a, idx(k)) > 0.5f ? 0.0f : 1.0f);   /* a touch toggles the row, as MPC's list does */
+}
+static float marker_ms(AEffect *a) {
+    char t[256]; display(a, "sl_foot", t);
+    const char *m = strstr(t, "MARKER ");
+    return m ? (float)atof(m + 7) : -1.0f;
+}
+
 static void note(AEffect *a, int on, int key, int vel) {
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {(unsigned char)(on ? 0x90 : 0x80), (unsigned char)key, (unsigned char)vel, 0}, {0}};
     EV ev = {1, 0, {&m}};
@@ -223,31 +244,33 @@ int main(void) {
     if (system("rm -rf fake-media && mkdir -p fake-media/CARD/Breaks/Jungle"
                " && cp 'data/Library/Factory Sounds/TB Break 170.wav' fake-media/CARD/Breaks/amen.wav") != 0) { printf("FAIL fake drive\n"); fails++; }
     for (int i = 0; i < 8; i++) { a->setP(a, idx("smp_back"), 1); run(a, 2); a->setP(a, idx("smp_back"), 0); settle(a, 60); }
-    settle(a, 300);
+    a->setP(a, idx("smp_home"), 1); run(a, 2); a->setP(a, idx("smp_home"), 0);
+    settle(a, 400);
     display(a, "smp_path", text);
-    CHECK(strcmp(text, "DRIVES") == 0, "BACK climbs to the drive list ('%s')", text);
-    int found = -1;
-    for (int i = 0; i < 12 && found < 0; i++) {
-        set_plain(a, "smp_file", (float)i); settle(a, 120);
-        display(a, "smp_l4", text);
-        printf("     drive row %d: '%s'\n", i, text);
-        if (strstr(text, "DRIVE  CARD")) found = i;
-    }
-    CHECK(found >= 0, "the fake SD card is listed as a drive");
-    a->setP(a, idx("smp_open"), 1); run(a, 2); a->setP(a, idx("smp_open"), 0); settle(a, 300);
+    CHECK(strcmp(text, "PLACES") == 0, "HOME shows PLACES ('%s')", text);
+    for (int r = 1; r <= 8; r++) { char k[16]; snprintf(k, sizeof k, "smp_r_%d", r); display(a, k, text); printf("     place %d: '%s'\n", r, text); }
+    int row = find_row(a, "SD / USB  CARD");
+    CHECK(row > 0, "the card is a place");
+    if (row > 0) tap_row(a, row);
+    settle(a, 400);
     display(a, "smp_path", text);
-    CHECK(strstr(text, "DRIVE CARD") != NULL, "OPEN goes into it ('%s')", text);
-    display(a, "smp_l4", text);
-    CHECK(strstr(text, "Breaks") != NULL, "folders first: '%s'", text);
-    a->setP(a, idx("smp_row4"), 1); run(a, 2); a->setP(a, idx("smp_row4"), 0); settle(a, 300);   /* tap the selected row = open */
-    display(a, "smp_l4", text); display(a, "smp_l5", text2);
-    printf("     in Breaks: '%s' / '%s'\n", text, text2);
-    CHECK(strstr(text, "Jungle") != NULL && strstr(text2, "amen.wav") != NULL, "Breaks lists its folder, then its files");
-    a->setP(a, idx("smp_row5"), 1); run(a, 2); a->setP(a, idx("smp_row5"), 0); settle(a, 200);   /* tap the next row: it's selected */
-    display(a, "smp_l4", text);
-    CHECK(strstr(text, "amen.wav") != NULL, "tapping a row selects it ('%s')", text);
-    peak = 0; settle(a, 900);
-    CHECK(peak > 0.01, "resting on a file auditions it (peak %.3f)", peak);
+    CHECK(strstr(text, "CARD") != NULL, "a tap opens it ('%s')", text);
+    row = find_row(a, "Breaks");
+    CHECK(row == 1, "folders first: Breaks on row %d", row);
+    if (row > 0) tap_row(a, row);
+    settle(a, 400);
+    int jr = find_row(a, "Jungle"), ar = find_row(a, "amen.wav");
+    printf("     in Breaks: Jungle row %d, amen.wav row %d\n", jr, ar);
+    CHECK(jr == 1 && ar == 2, "Breaks lists its folder, then its files");
+    peak = 0;
+    if (ar > 0) tap_row(a, ar);
+    settle(a, 900);
+    CHECK(lit_row(a) == ar, "a tap selects the file (lit row %d)", lit_row(a));
+    CHECK(peak > 0.01, "and plays it (peak %.3f)", peak);
+    peak = 0; settle(a, 1500);
+    if (ar > 0) tap_row(a, ar);                      /* the lit row again: plays again */
+    peak = 0; settle(a, 600);
+    CHECK(peak > 0.01, "tapping it again plays it again (peak %.3f)", peak);
     set_plain(a, "pad", 9); set_plain(a, "smp_slice", 1); run(a, 2);
     a->setP(a, idx("smp_load"), 1); run(a, 4); a->setP(a, idx("smp_load"), 0);
     for (int i = 0; i < 200; i++) { run(a, 4); usleep(30000); display(a, "sl_info", text); if (strstr(text, "PAD 09") && strstr(text, "SLICES") && !strstr(text, "NOT")) break; }
@@ -257,9 +280,12 @@ int main(void) {
     CHECK(strstr(text, "AMEN") != NULL, "PAD readout names it ('%s')", text);
     note(a, 1, 44, 110); peak = 0; run(a, 40); note(a, 0, 44, 0); run(a, 40);
     CHECK(peak > 0.01, "pad 9 (note 44) plays it (peak %.3f)", peak);
-    a->setP(a, idx("smp_back"), 1); run(a, 2); a->setP(a, idx("smp_back"), 0); settle(a, 300);
-    display(a, "smp_l4", text);
-    CHECK(strstr(text, "Breaks") != NULL, "BACK lands on the folder it came from ('%s')", text);
+    a->setP(a, idx("smp_back"), 1); run(a, 2); a->setP(a, idx("smp_back"), 0); settle(a, 400);
+    row = lit_row(a);
+    { char k[16]; snprintf(k, sizeof k, "smp_r_%d", row > 0 ? row : 1); display(a, k, text); }
+    CHECK(strstr(text, "Breaks") != NULL, "BACK lands on the folder it came from, lit ('%s')", text);
+    a->setP(a, idx("smp_home"), 1); run(a, 2); a->setP(a, idx("smp_home"), 0); settle(a, 400);
+    CHECK(find_row(a, "RECENT  Breaks") > 0, "PLACES now lists RECENT Breaks");
 
     /* 2e2. the SLICE screen on pad 9 */
     settle(a, 300);
@@ -298,10 +324,10 @@ int main(void) {
     CHECK(count1 == count0 || count0 == 16, "DELETE removes it again (%d)", count1);
     set_plain(a, "sl_zoom", 1); run(a, 2); settle(a, 300);
     display(a, "sl_foot", text);
-    CHECK(strstr(text, "ZOOM") != NULL, "ZOOM shows the selected slice ('%s')", text);
+    CHECK(strstr(text, "VIEW SLICE") != NULL, "ZOOM shows the selected slice ('%s')", text);
     set_plain(a, "sl_zoom", 0); run(a, 2);
     /* finger modes: MOVE brings the nearest marker to the tap, ADD puts one there, DELETE takes the nearest away */
-    set_plain(a, "sl_tap", 1); run(a, 2);
+    set_plain(a, "sl_snap", 0); set_plain(a, "sl_tap", 1); run(a, 2);
     set_plain(a, "wv_tap", 41); run(a, 2); settle(a, 300);
     int at41 = 0, at40 = 0;
     for (int c = 1; c <= 64; c++) { char k[8]; snprintf(k, sizeof k, "wt_%02d", c); int tv = (int)lroundf(plain(a, k));
@@ -320,7 +346,26 @@ int main(void) {
     display(a, "sl_foot", text); if (strstr(text, "OF ")) sscanf(strstr(text, "OF ") + 3, "%d", &count1);
     CHECK(count1 == count0, "DELETE: a tap takes the nearest one away (%d)", count1);
     (void)at40;
-    set_plain(a, "sl_tap", 0); run(a, 2);
+    set_plain(a, "sl_tap", 0); set_plain(a, "sl_snap", 2); run(a, 2);
+
+    /* tight chops: 25 ms zoom, one nudge = one column (0.4 ms), TIGHTEN puts a mis-nudged marker back on its hit */
+    set_plain(a, "sl_pick", 4); set_plain(a, "sl_view", 4); run(a, 2); settle(a, 300);
+    float orig = marker_ms(a);
+    a->setP(a, idx("sl_nr1"), 1); run(a, 2); a->setP(a, idx("sl_nr1"), 0); settle(a, 250);
+    float one = marker_ms(a) - orig;
+    CHECK(one > 0.2f && one < 0.6f, "at 25 ms, one nudge moves the marker %.2f ms", one);
+    for (int i = 0; i < 2; i++) { a->setP(a, idx("sl_nr2"), 1); run(a, 2); a->setP(a, idx("sl_nr2"), 0); settle(a, 200); }
+    float moved = marker_ms(a);
+    printf("     marker %.1f ms -> nudged to %.1f ms\n", orig, moved);
+    CHECK(moved - orig > 5.0f, "the x8 nudges move it on (%.1f ms)", moved - orig);
+    a->setP(a, idx("sl_tight"), 1); run(a, 2); a->setP(a, idx("sl_tight"), 0); settle(a, 300);
+    float tight = marker_ms(a);
+    printf("     TIGHTEN: %.1f ms (the hit was at %.1f)\n", tight, orig);
+    CHECK(fabsf(tight - orig) < 1.5f, "TIGHTEN puts it back on its hit (%.1f vs %.1f ms)", tight, orig);
+    a->setP(a, idx("sl_tightall"), 1); run(a, 2); a->setP(a, idx("sl_tightall"), 0); settle(a, 300);
+    display(a, "status", text);
+    CHECK(strstr(text, "TIGHTENED") != NULL, "TIGHTEN ALL reports ('%s')", text);
+    set_plain(a, "sl_view", 0); run(a, 2);
     peak = 0; a->setP(a, idx("sl_play"), 1); run(a, 2); a->setP(a, idx("sl_play"), 0); settle(a, 200);
     CHECK(peak > 0.01, "PLAY SLICE plays it (peak %.3f)", peak);
 

@@ -448,6 +448,10 @@ class Tab:
         d.ellipse(((cx - 6) * SS, (cy - 6) * SS, (cx + 6) * SS, (cy + 6) * SS), fill=(70, 18, 12))
         self.add(dict(kind="lamp", key=key, cx=cx, cy=cy, w=28, h=28))
 
+    def touch_list(self, key, x, y, w, rows, th, gap, tsize=24, tcolor="ffd37a"):
+        """The toolkit's touch list: rows <key>_1..N, each the engine's text, lit when its <key>_N_on says so."""
+        self.add(dict(kind="list", key=key, x=x, y=y, w=w, rows=rows, th=th, gap=gap, tsize=tsize, tcolor=tcolor))
+
     def hit(self, key, cx, cy, w, h):
         """An invisible touch area firing a trigger (a browser row)."""
         self.add(dict(kind="hit", key=key, cx=cx, cy=cy, w=w, h=h))
@@ -789,6 +793,28 @@ def render_control(tab, c, out, slug, prev):
                 out.save(stp, "fx_lamp.png")
                 out.strips["fx_lamp"] = frames
             out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/fx_lamp.png frames=2' % (c["cx"], c["cy"] + Y_OFF, w, h, key))
+        elif k == "list":
+            w, th = c["w"], c["th"]
+            for state in ("off", "on"):
+                im = Image.new("RGBA", (w * SS, th * SS), (0, 0, 0, 0))
+                d = ImageDraw.Draw(im)
+                if state == "on":
+                    g = Image.new("RGBA", im.size, (0, 0, 0, 0))
+                    ImageDraw.Draw(g).rounded_rectangle((3 * SS, 3 * SS, w * SS - 3 * SS, th * SS - 3 * SS), radius=5 * SS, fill=AMBER + (110,))
+                    im.alpha_composite(g.filter(ImageFilter.GaussianBlur(4 * SS)))
+                    d.rounded_rectangle((2 * SS, 2 * SS, w * SS - 2 * SS, th * SS - 2 * SS), radius=5 * SS, fill=(62, 40, 10, 255),
+                                        outline=AMBER + (255,), width=2 * SS)
+                else:
+                    d.rounded_rectangle((2 * SS, 2 * SS, w * SS - 2 * SS, th * SS - 2 * SS), radius=5 * SS, fill=(14, 10, 8, 255),
+                                        outline=(52, 60, 56, 255), width=SS)
+                out.save(im.resize((w, th), Image.LANCZOS), "row_%dx%d_%s.png" % (w, th, state))
+                if state == "off":
+                    for r in range(c["rows"]):
+                        prev.alpha_composite(im.resize((w, th), Image.LANCZOS), (c["x"], c["y"] + r * (th + c["gap"])))
+            h = c["rows"] * th + (c["rows"] - 1) * c["gap"]
+            out.lines.append('list x=%d y=%d w=%d h=%d cols=1 rows=%d th=%d gap=%d key=%s tsize=%d tcolor=%s talign=left tx=18 '
+                             'img=art/row_%dx%d_off.png img_on=art/row_%dx%d_on.png' %
+                             (c["x"], c["y"] + Y_OFF, w, h, c["rows"], th, c["gap"], key, c["tsize"], c["tcolor"], w, th, w, th))
         elif k == "hit":
             out.lines.append('button cx=%d cy=%d label="" key=%s img=art/clear.png img_on=art/clear.png w=%d h=%d ns=0' %
                              (c["cx"], c["cy"] + Y_OFF, key, c["w"], c["h"]))
@@ -1022,12 +1048,12 @@ def demo_wave(prev, out):
     d = ImageDraw.Draw(prev)
     green = (141, 255, 106)
     d.text((640, 100), "PAD 01   TB BREAK 170      2.824 s   44.1 kHz   MONO", font=font(18, False), fill=green, anchor="mm")
-    d.text((640, 318), "SLICE 5 OF 16   0.176 s   STARTS AT 0.706 s", font=font(18, False), fill=green, anchor="mm")
+    d.text((640, 318), "SLICE 5 OF 16  |  MARKER 705.9 ms  |  176.5 ms LONG  |  VIEW ALL", font=font(18, False), fill=green, anchor="mm")
 
 
 def tab_slice():
-    keys = ["pad", "sl_pick", "sl_pos", "sl_sens", "sl_count", "sl_add", "sl_del", "sl_zoom",
-            "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread", "sl_play", "sl_tap"]
+    keys = ["pad", "sl_pick", "sl_pos", "sl_view", "sl_nl2", "sl_nl1", "sl_nr1", "sl_nr2",
+            "sl_snap", "sl_tap", "sl_tight", "sl_tightall", "sl_add", "sl_del", "sl_play"]
     t = Tab("SLICE", [("SLICE", keys)], 707)
     crt_screen(t)
     green = "8dff6a"
@@ -1037,28 +1063,46 @@ def tab_slice():
         cx = WAVE_X0 + c * COL_W + COL_W // 2
         t.column("wt_%02d" % (c + 1), cx, TAB_CY, COL_W, TAB_H, "slice_tabs", tab_frames)
         t.column("wv_%02d" % (c + 1), cx, WAVE_CY, COL_W, WAVE_H, "slice_wave", wave_frames)
-    # touch: one invisible key per column, plus "None" (where the engine parks it) off the trace's right end
     n = WAVE_COLS + 1
     sw = COL_W - 2
     t.add(dict(kind="taps", key="wv_tap", cx=WAVE_X0 + 1 + (n * sw + (n - 1) * 2) // 2, cy=TAB_CY - TAB_H // 2 + (TAB_H + WAVE_H) // 2,
-                           n=n, sw=sw, sh=TAB_H + WAVE_H))
+               n=n, sw=sw, sh=TAB_H + WAVE_H))
 
-    t.panel(14, 356, 1252, 258, "SLICER")
-    t.knob("pad", 90, 468, 34, "PAD", bw=110)
-    t.knob("sl_pick", 220, 468, 34, "SLICE", bw=110)
-    t.knob("sl_pos", 350, 468, 34, "MOVE", bw=110)
-    t.knob("sl_sens", 480, 468, 34, "SENS", bw=110)
-    t.keys("sl_count", 640, 470, ["4", "8", "16"], 62, 56, name="COUNT")
-    t.button("sl_add", 800, 470, "ADD", w=120, h=64)
-    t.button("sl_del", 935, 470, "DELETE", w=120, h=64)
-    t.toggle("sl_zoom", 1070, 470, "ZOOM", w=120, h=64)
-    t.button("sl_play", 1195, 470, "PLAY", w=110, h=64)
-    t.button("sl_auto", 130, 576, "AUTO SLICE", w=200, h=60)
-    t.button("sl_equal", 336, 576, "EQUAL", w=170, h=60)
-    t.button("sl_reset", 520, 576, "RESET", w=160, h=60)
-    t.button("sl_unslice", 696, 576, "UNSLICE", w=160, h=60)
-    t.button("sl_spread", 876, 576, "SPREAD", w=170, h=60)
-    t.keys("sl_tap", 1126, 584, ["PICK", "MOVE", "ADD", "DEL"], 60, 50, name="FINGER ON THE WAVE", label_size=14)
+    t.panel(14, 356, 1252, 258, "CHOP")
+    t.knob("pad", 74, 462, 30, "PAD", bw=100)
+    t.knob("sl_pick", 182, 462, 30, "SLICE", bw=100)
+    t.knob("sl_pos", 290, 462, 30, "MOVE", bw=100)
+    for i, (k, lab) in enumerate([("sl_nl2", "◀◀"), ("sl_nl1", "◀"), ("sl_nr1", "▶"), ("sl_nr2", "▶▶")]):
+        t.button(k, 410 + i * 86, 456, lab, w=80, h=70, label_size=24)
+    t.text(539, 404, "NUDGE THE MARKER (1 / 8 COLUMNS)", size=13)
+    t.button("sl_tight", 790, 456, "TIGHTEN", w=130, h=70, label_size=16)
+    t.button("sl_tightall", 935, 456, "TIGHTEN\nALL", w=130, h=70, label_size=16)
+    t.button("sl_play", 1070, 456, "PLAY", w=110, h=70, label_size=18)
+    t.button("sl_add", 1186, 432, "ADD", w=104, h=44, label_size=14)
+    t.button("sl_del", 1186, 486, "DELETE", w=104, h=44, label_size=14)
+    t.keys("sl_view", 226, 572, ["ALL", "SLICE", "400", "100", "25 ms"], 80, 52, name="ZOOM", label_size=15)
+    t.keys("sl_snap", 588, 572, ["OFF", "ZERO", "HIT"], 80, 52, name="SNAP TAPS TO", label_size=15)
+    t.keys("sl_tap", 958, 572, ["PICK", "MOVE", "ADD", "DEL"], 84, 52, name="FINGER ON THE WAVE", label_size=15)
+    return t
+
+
+def tab_autoslice():
+    keys = ["pad", "sl_sens", "sl_count", "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread"]
+    t = Tab("AUTO SLICE", [("AUTO SLICE", keys)], 717)
+    t.panel(14, 64, 420, 228, "SELECTED PAD")
+    t.knob("pad", 96, 186, 40, "PAD", value=False)
+    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE")
+    t.panel(446, 64, 820, 228, "FIND THE HITS")
+    t.knob("sl_sens", 540, 184, 38, "SENSITIVITY", bw=124)
+    t.keys("sl_count", 748, 184, ["4", "8", "16"], 80, 60, name="COUNT")
+    t.button("sl_auto", 990, 184, "AUTO\nSLICE", w=180, h=84)
+    t.button("sl_equal", 1170, 184, "EQUAL", w=150, h=84)
+    t.panel(14, 302, 1252, 312, "SLICES")
+    t.readout("sl_info", 640, 372, 1000, 52, tsize=28)
+    t.button("sl_reset", 260, 500, "RESET", w=220, h=80)
+    t.button("sl_unslice", 520, 500, "UNSLICE", w=220, h=80)
+    t.button("sl_spread", 800, 500, "SPREAD\nONTO PADS", w=260, h=80)
+    t.tag(1100, 500, ["AUTO SLICE FINDS THE HITS.", "THEN GET TIGHT ON THE SLICE PAGE:", "ZOOM 25 ms, NUDGE, TIGHTEN."], 270, 64)
     return t
 
 
@@ -1069,39 +1113,24 @@ def selected_pad_panel(t):
 
 
 def tab_samples():
-    keys = ["pad", "smp_file", "smp_open", "smp_back", "smp_play", "smp_audition", "smp_load", "smp_slice", "smp_clear"]
+    keys = ["pad", "smp_file", "smp_home", "smp_back", "smp_pgup", "smp_pgdn", "smp_play", "smp_audition", "smp_load", "smp_slice", "smp_clear"]
     t = Tab("SAMPLES", [("SAMPLES", keys)], 808)
     t.panel(14, 64, 880, 550, "BROWSER")
-    t.readout("smp_path", 520, 112, 720, 38, tsize=20, talign="left")
-    t.knob("smp_file", 76, 316, 40, "SAMPLE", value=False)
-    pitch = 50
-    for r in range(7):
-        cy = 312 + (r - 3) * pitch
-        mid = r == 3
-        if mid:   # the selection: a lit bar behind the middle row
-            d = t.draw
-            box = (134, cy - 22, 874, cy + 22)
-            g = Image.new("RGBA", t.hi.size, (0, 0, 0, 0))
-            ImageDraw.Draw(g).rounded_rectangle(tuple(v * SS for v in box), radius=5 * SS, fill=AMBER + (90,))
-            t.hi.alpha_composite(g.filter(ImageFilter.GaussianBlur(6 * SS)))
-            d.rounded_rectangle(tuple(v * SS for v in box), radius=5 * SS, fill=(58, 38, 10), outline=AMBER, width=2 * SS)
-        else:
-            t.vfd_window(504, cy, 740, 42)
-        t.readout("smp_l%d" % (r + 1), 510, cy, 720, 42, tsize=26 if mid else 22, tcolor="ffd37a" if mid else "c9b48a",
-                  talign="left", window=False)
-        t.hit("smp_row%d" % (r + 1), 504, cy, 740, pitch - 4)
-    t.readout("smp_info", 470, 512, 800, 32, tsize=18)
-    t.button("smp_back", 130, 572, "◀ BACK", w=160, h=58)
-    t.button("smp_open", 310, 572, "OPEN", w=160, h=58)
-    t.button("smp_play", 490, 572, "PLAY", w=160, h=58)
-    t.toggle("smp_audition", 690, 572, "AUDITION", w=190, h=58)
+    t.readout("smp_path", 520, 106, 720, 36, tsize=20, talign="left")
+    t.touch_list("smp_r", 150, 136, 724, 8, 46, 4)
+    t.readout("smp_info", 512, 572, 724, 32, tsize=18)
+    for i, (k, lab) in enumerate([("smp_home", "PLACES"), ("smp_back", "◀ BACK"), ("smp_pgup", "▲ PAGE"), ("smp_pgdn", "▼ PAGE"),
+                                  ("smp_play", "PLAY")]):
+        t.button(k, 82, 166 + i * 74, lab, w=112, h=64, label_size=16)
+    t.toggle("smp_audition", 82, 166 + 5 * 74, "AUDITION", w=112, h=64, label_size=14)
     t.panel(906, 64, 360, 550, "LOAD ONTO THE PAD")
-    t.knob("pad", 1086, 178, 40, "PAD", value=False)
-    t.readout("pad", 1086, 260, 320, 44, tsize=22)
-    t.button("smp_load", 1086, 350, "LOAD", w=300, h=80, label_size=26)
-    t.toggle("smp_slice", 1008, 452, "SLICE\nON LOAD", w=144, h=72)
-    t.button("smp_clear", 1164, 452, "CLEAR\nPAD", w=144, h=72)
-    t.tag(1086, 552, ["TURN SAMPLE OR TAP A ROW.", "TAP THE LIT ROW: OPEN / PLAY.", "AUDITION PLAYS AS YOU GO."], 300, 64)
+    t.knob("pad", 1000, 176, 38, "PAD", value=False)
+    t.knob("smp_file", 1172, 176, 38, "SCROLL", value=False)
+    t.readout("pad", 1086, 262, 320, 44, tsize=22)
+    t.button("smp_load", 1086, 352, "LOAD", w=300, h=80, label_size=26)
+    t.toggle("smp_slice", 1008, 454, "SLICE\nON LOAD", w=144, h=72)
+    t.button("smp_clear", 1164, 454, "CLEAR\nPAD", w=144, h=72)
+    t.tag(1086, 556, ["TAP A FOLDER TO OPEN IT.", "TAP A FILE TO HEAR IT, THEN LOAD.", "PLACES: MPC SAMPLES, DRIVES, RECENT."], 300, 64)
     return t
 
 
@@ -1234,7 +1263,7 @@ def build():
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
     tiles = []
-    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_macros, tab_mixer, tab_setup):
+    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_autoslice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_macros, tab_mixer, tab_setup):
         tab = make()
         bg = render(tab, out)
         tiles.append(bg)

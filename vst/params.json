@@ -749,8 +749,7 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout",
-   "poll": false
+   "type": "readout"
   },
   {
    "key": "smp_file",
@@ -2373,7 +2372,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l2",
@@ -2382,7 +2382,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l3",
@@ -2391,7 +2392,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l4",
@@ -2400,7 +2402,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l5",
@@ -2409,7 +2412,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l6",
@@ -2418,7 +2422,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_l7",
@@ -2427,7 +2432,8 @@
    "max": 0,
    "default": 0,
    "display": "string",
-   "type": "readout"
+   "type": "readout",
+   "poll": false
   },
   {
    "key": "smp_row1",
@@ -2950,6 +2956,190 @@
    "max": 1,
    "default": 0,
    "display": "int"
+  },
+  {
+   "key": "smp_r_1",
+   "name": "List 1",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_2",
+   "name": "List 2",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_3",
+   "name": "List 3",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_4",
+   "name": "List 4",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_5",
+   "name": "List 5",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_6",
+   "name": "List 6",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_7",
+   "name": "List 7",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_r_8",
+   "name": "List 8",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "smp_pgup",
+   "name": "Page Up",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_pgdn",
+   "name": "Page Down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_home",
+   "name": "Places",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_view",
+   "name": "Zoom",
+   "options": [
+    "All",
+    "Slice",
+    "400 ms",
+    "100 ms",
+    "25 ms"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sl_snap",
+   "name": "Snap",
+   "options": [
+    "Off",
+    "Zero",
+    "Hit"
+   ],
+   "default": 2
+  },
+  {
+   "key": "sl_nl2",
+   "name": "Nudge Left x8",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_nl1",
+   "name": "Nudge Left",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_nr1",
+   "name": "Nudge Right",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_nr2",
+   "name": "Nudge Right x8",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_tight",
+   "name": "Tighten Marker",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "sl_tightall",
+   "name": "Tighten All",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
   }
  ],
  "sections": [
@@ -3352,6 +3542,35 @@
     "fx_lit_14",
     "fx_lit_15",
     "fx_lit_16"
+   ]
+  },
+  {
+   "label": "Browser 2",
+   "keys": [
+    "smp_r_1",
+    "smp_r_2",
+    "smp_r_3",
+    "smp_r_4",
+    "smp_r_5",
+    "smp_r_6",
+    "smp_r_7",
+    "smp_r_8",
+    "smp_pgup",
+    "smp_pgdn",
+    "smp_home"
+   ]
+  },
+  {
+   "label": "Chop",
+   "keys": [
+    "sl_view",
+    "sl_snap",
+    "sl_nl2",
+    "sl_nl1",
+    "sl_nr1",
+    "sl_nr2",
+    "sl_tight",
+    "sl_tightall"
    ]
   }
  ]

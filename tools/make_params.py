@@ -131,7 +131,7 @@ section("Slice", [
     trig("sl_reset", "Reset Slices"),
     trig("sl_unslice", "Unslice"),
     trig("sl_spread", "Spread"),
-    dict(readout("sl_info", "Slicer"), poll=False),   # 1.1: no longer on the skin (the screen's lines replace it)
+    readout("sl_info", "Slicer"),
 ])
 
 # ---- 1.0: SAMPLES (your own breaks from the SD card) ------------------------------------------
@@ -187,7 +187,7 @@ section("Browser", [
     trig("smp_play", "Play Sample"),
     opts("smp_audition", "Audition", ONOFF, 1),
     readout("smp_path", "Folder"),
-] + [readout("smp_l%d" % (r + 1), "Row %d" % (r + 1)) for r in range(BROWSER_ROWS)]
+] + [dict(readout("smp_l%d" % (r + 1), "Row %d" % (r + 1)), poll=False) for r in range(BROWSER_ROWS)]
   + [trig("smp_row%d" % (r + 1), "Pick Row %d" % (r + 1)) for r in range(BROWSER_ROWS)])
 
 # ---- 1.1: what shapes the sound, tempo sync, kit stepping ------------------------------------------------
@@ -233,6 +233,24 @@ section("FX edit", [
     readout("fx_n3", "Setting 3 Name"),
     trig("kit_saveas", "Save Kit As"),
 ] + [num("fx_lit_%02d" % (i + 1), "FX %d Lit" % (i + 1), 0, 1, 0, display="int") for i in range(16)])
+
+# ---- 1.5: the browser as a touch list; chop tools (deep zoom, nudge, snap, tighten) ---------------------------
+LIST_ROWS = 8
+section("Browser 2", [readout("smp_r_%d" % (r + 1), "List %d" % (r + 1)) for r in range(LIST_ROWS)] + [
+    trig("smp_pgup", "Page Up"),
+    trig("smp_pgdn", "Page Down"),
+    trig("smp_home", "Places"),
+])
+section("Chop", [
+    opts("sl_view", "Zoom", ["All", "Slice", "400 ms", "100 ms", "25 ms"], 0),
+    opts("sl_snap", "Snap", ["Off", "Zero", "Hit"], 2),
+    trig("sl_nl2", "Nudge Left x8"),
+    trig("sl_nl1", "Nudge Left"),
+    trig("sl_nr1", "Nudge Right"),
+    trig("sl_nr2", "Nudge Right x8"),
+    trig("sl_tight", "Tighten Marker"),
+    trig("sl_tightall", "Tighten All"),
+])
 
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

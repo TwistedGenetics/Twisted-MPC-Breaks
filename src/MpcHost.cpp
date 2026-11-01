@@ -197,7 +197,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, slView, slSnap, listRow, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -213,13 +213,16 @@ namespace
     {
         tStatus, tSlInfo, tSmpInfo, tStInfo, tNoteInfo, tSlHead, tSlFoot, tSmpPath,
         tRow1, tRow2, tRow3, tRow4, tRow5, tRow6, tRow7,
-        tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, tFxName, tFxN1, tFxN2, tFxN3, kNumTexts
+        tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, tFxName, tFxN1, tFxN2, tFxN3,
+        tList1, tList2, tList3, tList4, tList5, tList6, tList7, tList8, kNumTexts
     };
     const char* const kTextKeys[kNumTexts] = {
         "status", "sl_info", "smp_info", "st_info", "note_info", "sl_head", "sl_foot", "smp_path",
         "smp_l1", "smp_l2", "smp_l3", "smp_l4", "smp_l5", "smp_l6", "smp_l7",
-        "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name", "fx_name", "fx_n1", "fx_n2", "fx_n3"
+        "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name", "fx_name", "fx_n1", "fx_n2", "fx_n3",
+        "smp_r_1", "smp_r_2", "smp_r_3", "smp_r_4", "smp_r_5", "smp_r_6", "smp_r_7", "smp_r_8"
     };
+    constexpr int kList = 8;   // the browser's touch list (tools/make_params.py LIST_ROWS)
 
     // The naming keyboard's keys (tools/make_params.py KEY_CHARS): option i types kKeyChars[i]
     constexpr const char* kKeyChars = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()";
@@ -263,6 +266,8 @@ namespace
                 else if (std::strcmp (k, "note_base") == 0)    own (Own::noteBase);
                 else if (std::strcmp (k, "sl_pos") == 0)       own (Own::slPos);
                 else if (std::strcmp (k, "sl_zoom") == 0)      own (Own::slZoom);
+                else if (std::strcmp (k, "sl_view") == 0)      own (Own::slView);
+                else if (std::strcmp (k, "sl_snap") == 0)      own (Own::slSnap);
                 else if (std::strcmp (k, "wv_tap") == 0)       own (Own::wvTap);
                 else if (startsWith (k, "wv_"))                own (Own::wave, std::atoi (k + 3) - 1);
                 else if (startsWith (k, "wt_"))                own (Own::tab, std::atoi (k + 3) - 1);
@@ -495,7 +500,9 @@ namespace
                     break;
                 }
                 case Kind::own:  setOwnParam (key, idx, in, v); break;
-                case Kind::text: break;
+                case Kind::text:
+                    if (in.text >= tList1 && in.text < tList1 + kList) listTap (in.text - tList1);   // a row touched
+                    break;
                 case Kind::param:
                 case Kind::padParam:
                 case Kind::fxParam:
@@ -547,8 +554,14 @@ namespace
                 }
             }
 
-            // "<key>_display": a value as text
             const size_t n = std::strlen (key);
+            // "<row>_on": which list row is lit (the wrapper asks every 10 ms)
+            if (n > 3 && std::strcmp (key + n - 3, "_on") == 0 && startsWith (key, "smp_r_") && std::isdigit ((unsigned char) key[6]))
+            {
+                const int row = std::atoi (key + 6) - 1;
+                return put (buf, len, litRow.load() == row ? "1" : "0");
+            }
+            // "<key>_display": a value as text
             if (n > 8 && std::strcmp (key + n - 8, "_display") == 0)
             {
                 const std::string base (key, n - 8);
@@ -563,12 +576,7 @@ namespace
                     if (p == nullptr) return put (buf, len, "-");
                     return put (buf, len, tb::fx::valueText (tb::fx::def (fxSel.load()).params[i], p->convertFrom0to1 (p->getValue())));
                 }
-                if (base == "sl_pos")
-                {
-                    const auto info = proc->getSamples().getInfo (selectedPad.load());
-                    if (info.buffer == nullptr) return put (buf, len, "-");
-                    return put (buf, len, seconds (info.buffer->getLengthSeconds() * slPosValue.load() / 998.0));
-                }
+                if (base == "sl_pos")   return putText (tSlPos, buf, len);   // the marker in ms (100 ms old at most)
                 idx = paramIndex (base.c_str());
                 if (idx >= 0)
                     if (auto* p = resolveIdx (idx)) return put (buf, len, p->getCurrentValueAsText());
@@ -1021,6 +1029,7 @@ namespace
             setText (tSmpInfo, browser.info);
             setText (tEntryName, browser.entry);
             for (int r = 0; r < kRows; ++r) setText (tRow1 + r, browser.rows[(size_t) r]);
+            for (int r = 0; r < kList; ++r) setText (tList1 + r, browser.list[(size_t) r]);
         }
 
         juce::String padText (int pad, const tb::SampleManager::PadInfo& info) const
@@ -1040,15 +1049,127 @@ namespace
             return juce::jlimit (0, t.count - 1, juce::roundToInt (padRaw (pad, tb::params::padSlice)) - 1);
         }
 
-        /** The span shown: the whole sample, or (ZOOM) the selected slice with a little either side. */
-        juce::Range<int> viewOf (const tb::SampleManager::PadInfo& info, int sel) const
+        /** The span shown (message thread): ALL, the selected SLICE with a little either side, or 400 / 100 / 25 ms
+            around its marker. A zoomed view stays put while the marker is adjusted (so the MOVE knob and taps keep
+            meaning the same places), and recentres only when the marker leaves its middle, or the pad, slice or zoom
+            changes. */
+        juce::Range<int> viewOf (const tb::SampleManager::PadInfo& info, int sel)
         {
             const int n = info.buffer != nullptr ? info.buffer->getNumSamples() : 0;
             if (n <= 0) return { 0, 1 };
-            if (! slZoom.load() || info.slices.isEmpty()) return { 0, n };
-            const auto r = info.slices.region (sel, n);
-            const int margin = juce::jmax (256, r.getLength() / 6);
-            return { juce::jmax (0, r.getStart() - margin), juce::jmin (n, r.getEnd() + margin) };
+            const int mode = slView.load();
+            const auto& t = info.slices;
+            if (mode == 0 || (mode == 1 && t.isEmpty())) return { 0, n };
+            const int marker = t.isEmpty() ? 0 : t.starts[(size_t) sel];
+            juce::Range<int> ideal;
+            if (mode == 1)
+            {
+                const auto r = t.region (sel, n);
+                const int margin = juce::jmax (256, r.getLength() / 6);
+                ideal = { juce::jmax (0, r.getStart() - margin), juce::jmin (n, r.getEnd() + margin) };
+            }
+            else
+            {
+                static const double widthMs[] = { 0, 0, 400.0, 100.0, 25.0 };
+                const int w = juce::jlimit (kWaveCols, n, (int) (widthMs[mode] * info.buffer->sourceSampleRate / 1000.0));
+                const int st = juce::jlimit (0, n - w, marker - w / 2);
+                ideal = { st, st + w };
+            }
+            const int pad = selectedPad.load();
+            const bool sameKey = viewPad == pad && viewSel == sel && viewMode == mode && viewN == n;
+            const auto inner = juce::Range<int> (viewFrozen.getStart() + viewFrozen.getLength() / 10, viewFrozen.getEnd() - viewFrozen.getLength() / 10);
+            if (! sameKey || viewFrozen.isEmpty() || viewFrozen.getEnd() > n || ! inner.contains (marker))
+            {
+                viewFrozen = ideal;
+                viewPad = pad; viewSel = sel; viewMode = mode; viewN = n;
+            }
+            return viewFrozen;
+        }
+
+        //======================================================================
+        //  Tight chops: where the hit really starts, zero crossings
+        //======================================================================
+        /** |sample| summed over channels. */
+        static float level (const tb::SampleBuffer& b, int i)
+        {
+            float v = 0.0f;
+            for (int ch = 0; ch < b.getNumChannels(); ++ch) v = juce::jmax (v, std::abs (b.audio.getSample (ch, i)));
+            return v;
+        }
+
+        static float mono (const tb::SampleBuffer& b, int i)
+        {
+            float v = 0.0f;
+            for (int ch = 0; ch < b.getNumChannels(); ++ch) v += b.audio.getSample (ch, i);
+            return v;
+        }
+
+        /** The nearest place within radius where the waveform crosses zero (else pos). */
+        static int zeroCrossing (const tb::SampleBuffer& b, int pos, int radius)
+        {
+            const int n = b.getNumSamples();
+            for (int d = 0; d <= radius; ++d)
+                for (int s : { pos - d, pos + d })
+                    if (s > 0 && s < n && (mono (b, s - 1) <= 0.0f) != (mono (b, s) <= 0.0f)) return s;
+            return pos;
+        }
+
+        /** Where the sharpest hit within radius of pos starts: the block of 32 samples that rises most over the two
+            before it, then the first sample there above a quarter of that block's peak, then back to the zero
+            crossing just before it (a chop that starts on the attack, without a click). pos when there is no hit. */
+        static int attackNear (const tb::SampleBuffer& b, int pos, int radius)
+        {
+            constexpr int B = 32;
+            const int n = b.getNumSamples();
+            const int lo = juce::jmax (0, pos - radius - 2 * B), hi = juce::jmin (n - 1, pos + radius);
+            if (hi - lo < 4 * B) return pos;
+            std::vector<float> peak;
+            for (int s = lo; s + B <= hi; s += B)
+            {
+                float m = 0.0f;
+                for (int i = s; i < s + B; ++i) m = juce::jmax (m, level (b, i));
+                peak.push_back (m);
+            }
+            float localMax = 0.0f;
+            for (float v : peak) localMax = juce::jmax (localMax, v);
+            if (localMax <= 1.0e-4f) return pos;
+            int best = -1;
+            float bestRise = 0.0f;
+            for (size_t j = 2; j < peak.size(); ++j)
+            {
+                const int start = lo + (int) j * B;
+                if (std::abs (start - pos) > radius + B) continue;
+                const float rise = peak[j] - juce::jmax (peak[j - 1], peak[j - 2]);
+                if (peak[j] >= 0.08f * localMax && rise > bestRise) { bestRise = rise; best = (int) j; }
+            }
+            if (best < 0) return pos;
+            const int blockStart = lo + best * B;
+            const float thr = 0.25f * peak[(size_t) best];
+            int onset = blockStart;
+            for (int i = juce::jmax (0, blockStart - B); i < juce::jmin (n, blockStart + B); ++i)
+                if (level (b, i) >= thr) { onset = i; break; }
+            for (int k = onset; k > juce::jmax (1, onset - 88); --k)   // back to the zero crossing (2 ms at most)
+                if ((mono (b, k - 1) <= 0.0f) != (mono (b, k) <= 0.0f)) return k;
+            return onset;
+        }
+
+        /** A position after SNAP: as is, the nearest zero crossing, or the start of the nearest hit. */
+        int snapped (const tb::SampleBuffer& b, int pos, const juce::Range<int>& view) const
+        {
+            switch (slSnap.load())
+            {
+                case 1:  return zeroCrossing (b, pos, (int) (b.sourceSampleRate / 1000.0));
+                case 2:  return attackNear (b, pos, juce::jmin ((int) (0.015 * b.sourceSampleRate), juce::jmax (64, view.getLength() / 4)));
+                default: return pos;
+            }
+        }
+
+        /** Moves marker k, keeps it selected and plays the slice from there. */
+        void placeMarker (int pad, int k, int pos)
+        {
+            proc->getSamples().moveMarker (pad, k, pos);
+            setPadSlice (pad, k);
+            audition (pad, k);
         }
 
         static juce::String seconds (double s) { return juce::String (s, s < 10.0 ? 3 : 2) + " s"; }
@@ -1124,14 +1245,15 @@ namespace
             else if (t.isEmpty())   out.foot << "NOT SLICED: AUTO SLICE, EQUAL, OR ADD A MARKER";
             else
             {
+                static const char* const viewText[] = { "ALL", "SLICE", "400 ms", "100 ms", "25 ms" };
                 const auto r = t.region (sel, n);
-                out.foot << "SLICE " << (sel + 1) << " OF " << t.count << "   " << seconds (r.getLength() / rate)
-                         << "   STARTS AT " << seconds (r.getStart() / rate);
-                if (slZoom.load()) out.foot << "   |   ZOOM";
+                out.foot << "SLICE " << (sel + 1) << " OF " << t.count << "  |  MARKER " << juce::String (1000.0 * r.getStart() / rate, 1)
+                         << " ms  |  " << juce::String (1000.0 * r.getLength() / rate, 1) << " ms LONG  |  VIEW "
+                         << viewText[juce::jlimit (0, 4, slView.load())];
             }
             const int at = t.isEmpty() ? 0 : t.starts[(size_t) sel];
-            out.pos = seconds (at / rate);
-            slPosValue.store (juce::roundToInt (998.0 * at / n));
+            out.pos = juce::String (1000.0 * at / rate, 1) + " ms";
+            slPosValue.store (juce::jlimit (0, 998, juce::roundToInt (998.0 * (at - view.getStart()) / juce::jmax (1, view.getLength()))));
             return out;
         }
 
@@ -1172,6 +1294,32 @@ namespace
                     setPadSlice (pad, juce::jmax (0, sel - 1));
                 }
                 else if (k == "sl_play") audition (pad, sel);
+                else if (n > 0 && ! info.slices.isEmpty() && (k == "sl_nl2" || k == "sl_nl1" || k == "sl_nr1" || k == "sl_nr2"))
+                {
+                    // one column of the screen (eight for the double arrows): finer the deeper the zoom
+                    const auto view = viewOf (info, sel);
+                    const int col = juce::jmax (1, view.getLength() / kWaveCols);
+                    const int step = k == "sl_nl2" ? -8 * col : k == "sl_nl1" ? -col : k == "sl_nr1" ? col : 8 * col;
+                    placeMarker (pad, sel, info.slices.starts[(size_t) sel] + step);
+                }
+                else if (n > 0 && ! info.slices.isEmpty() && k == "sl_tight")
+                {
+                    const int at = attackNear (*info.buffer, info.slices.starts[(size_t) sel], (int) (0.015 * info.buffer->sourceSampleRate));
+                    placeMarker (pad, sel, at);
+                    setStatus ("SLICE " + juce::String (sel + 1) + " STARTS ON ITS HIT");
+                }
+                else if (n > 0 && ! info.slices.isEmpty() && k == "sl_tightall")
+                {
+                    const int radius = (int) (0.015 * info.buffer->sourceSampleRate);
+                    int moved = 0;
+                    for (int m = 0; m < info.slices.count; ++m)
+                    {
+                        const int was = samples.getInfo (pad).slices.starts[(size_t) m];
+                        const int at = m == 0 && was < radius ? was : attackNear (*info.buffer, was, radius);
+                        if (at != was) { samples.moveMarker (pad, m, at); ++moved; }
+                    }
+                    setStatus ("TIGHTENED " + juce::String (moved) + " OF " + juce::String (info.slices.count) + " MARKERS ONTO THEIR HITS");
+                }
                 refreshInfo();
             });
         }
@@ -1238,21 +1386,17 @@ namespace
                         if (std::abs (t.starts[(size_t) k] - at) < std::abs (t.starts[(size_t) best] - at)) best = k;
                     return best;
                 };
+                const int snap = snapped (*info.buffer, at, view);
                 switch (mode)
                 {
                     case 1:   // MOVE
-                        if (t.isEmpty()) { samples.addMarker (pad, at); setPadSlice (pad, 1); break; }
-                        {
-                            const int k = nearest();
-                            samples.moveMarker (pad, k, at);
-                            setPadSlice (pad, k);
-                            audition (pad, k);
-                        }
+                        if (t.isEmpty()) { samples.addMarker (pad, snap); setPadSlice (pad, 1); break; }
+                        placeMarker (pad, nearest(), snap);
                         break;
                     case 2:   // ADD
-                        if (samples.addMarker (pad, at))
+                        if (samples.addMarker (pad, snap))
                         {
-                            const int k = samples.getInfo (pad).slices.sliceAt (at);
+                            const int k = samples.getInfo (pad).slices.sliceAt (snap);
                             setPadSlice (pad, k);
                             audition (pad, k);
                         }
@@ -1393,7 +1537,9 @@ namespace
                 case Own::noteBase:    return (float) noteBaseOption();
                 case Own::step:        return proc->getBridge().seq.get (selectedPad.load(), in.sub).on ? 1.0f : 0.0f;
                 case Own::slPos:       return (float) slPosValue.load();
-                case Own::slZoom:      return slZoom.load() ? 1.0f : 0.0f;
+                case Own::slZoom:      return slView.load() == 1 ? 1.0f : 0.0f;
+                case Own::slView:      return (float) slView.load();
+                case Own::slSnap:      return (float) slSnap.load();
                 case Own::wvTap:       return (float) kTapNone;
                 case Own::wave:        return (float) wave[(size_t) in.sub].load();
                 case Own::tab:         return (float) tabs[(size_t) in.sub].load();
@@ -1469,12 +1615,16 @@ namespace
                         auto& samples = proc->getSamples();
                         const auto info = samples.getInfo (pad);
                         if (info.buffer == nullptr || info.slices.isEmpty()) return;
-                        samples.moveMarker (pad, selectedSlice (pad, info.slices), (int) ((int64_t) info.buffer->getNumSamples() * pos / 998));
+                        const int sel = selectedSlice (pad, info.slices);
+                        const auto view = viewOf (info, sel);   // the knob spans what the screen shows
+                        samples.moveMarker (pad, sel, view.getStart() + (int) ((int64_t) view.getLength() * pos / 998));
                         refreshInfo();
                     });
                     return;
                 }
-                case Own::slZoom:      slZoom.store (v > 0.5f); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
+                case Own::slZoom:      slView.store (v > 0.5f ? 1 : 0); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
+                case Own::slView:      slView.store (juce::jlimit (0, 4, juce::roundToInt (v))); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
+                case Own::slSnap:      slSnap.store (juce::jlimit (0, 2, juce::roundToInt (v))); return;
                 case Own::wvTap:
                 {
                     const int c = juce::roundToInt (v);
@@ -1493,6 +1643,9 @@ namespace
             else if (std::strcmp (key, "smp_load") == 0)       loadSelected (pad);
             else if (std::strcmp (key, "smp_open") == 0)       openSelected (true);
             else if (std::strcmp (key, "smp_back") == 0)       goBack();
+            else if (std::strcmp (key, "smp_pgup") == 0)       moveCursor (-kList, true);
+            else if (std::strcmp (key, "smp_pgdn") == 0)       moveCursor (kList, true);
+            else if (std::strcmp (key, "smp_home") == 0)       browse ({}, true, {});
             else if (std::strcmp (key, "smp_play") == 0)       previewSelected();
             else if (startsWith (key, "smp_row"))
             {
@@ -1569,41 +1722,90 @@ namespace
         {
             juce::String path, info, entry;
             std::array<juce::String, kRows> rows;
+            std::array<juce::String, kList> list;
         };
 
         juce::File samplesDir() const { return dataRoot.getChildFile ("Samples"); }
         juce::File lastFolderFile() const { return dataRoot.getChildFile ("browser-folder.txt"); }
+        juce::File recentFile() const { return dataRoot.getChildFile ("browser-recent.txt"); }
 
-        /** The top level: each drive MPC has mounted (once, however many names it has), the plugin's Samples folder
-            and the factory sounds. TBM_MEDIA moves "/media" (tests). */
+        /** PLACES, the top of the browser: where an MPC keeps samples first (its Samples and Documents folders, from
+            MPC.settings and the usual paths), then the drives (the internal drive as MPC shows it, /sdcard; cards and
+            sticks), the folders samples were last loaded from, the plugin's own folders, and the system drive last.
+            TBM_MEDIA (tests) moves "/media" and leaves out /sdcard and MPC.settings. */
         std::vector<Entry> listRoots() const
         {
             std::vector<Entry> out;
             std::set<std::pair<unsigned long, unsigned long>> seen;
             auto add = [&] (const juce::File& f, const juce::String& label)
             {
-                struct stat s {};
-                if (! f.isDirectory() || ::stat (f.getFullPathName().toRawUTF8(), &s) != 0) return;
-                if (! seen.insert ({ (unsigned long) s.st_dev, (unsigned long) s.st_ino }).second) return;
+                struct stat st {};
+                if (! f.isDirectory() || ::stat (f.getFullPathName().toRawUTF8(), &st) != 0) return;
+                if (! seen.insert ({ (unsigned long) st.st_dev, (unsigned long) st.st_ino }).second) return;
                 out.push_back ({ f, label, true });
             };
             const char* env = std::getenv ("TBM_MEDIA");
-            const juce::File media = env != nullptr && *env != 0 ? juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (env))
-                                                                  : juce::File ("/media");
+            const bool test = env != nullptr && *env != 0;
+            const juce::File media = test ? juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (env))
+                                          : juce::File ("/media");
+            const juce::File sdcard ("/sdcard");
+
+            if (! test)
+            {
+                for (const char* docs : { "MPC Documents", "Force Documents" })
+                {
+                    add (sdcard.getChildFile (docs).getChildFile ("Samples"), "MPC SAMPLES");
+                    add (sdcard.getChildFile (docs), "MPC DOCUMENTS");
+                }
+                // the folders MPC itself was told about (MPC.settings): Samples, Projects, content locations
+                const juce::File settings ("/media/az01-internal/Settings/MPC/MPC.settings");
+                if (settings.existsAsFile() && settings.getSize() < 4 * 1024 * 1024)
+                {
+                    const auto text = settings.loadFileAsString();
+                    int found = 0;
+                    for (int i = text.indexOf ("/sdcard/"), guard = 0; i >= 0 && found < 6 && guard < 400; ++guard)
+                    {
+                        int e = i;
+                        while (e < text.length() && ! juce::String ("\"<>\r\n=").containsChar (text[e])) ++e;
+                        const juce::File f (text.substring (i, e).trim());
+                        const auto name = f.getFileName();
+                        if (f.isDirectory() && name != "Synths" && name != "Settings" && ! name.startsWithIgnoreCase ("Plugin"))
+                        {
+                            const auto before = out.size();
+                            add (f, "MPC  " + name.toUpperCase());
+                            if (out.size() > before) ++found;
+                        }
+                        i = text.indexOf (e, "/sdcard/");
+                    }
+                }
+                add (sdcard.getChildFile ("Expansions"), "EXPANSIONS");
+                add (sdcard, "INTERNAL (MPC)");
+            }
             auto drives = media.findChildFiles (juce::File::findDirectories, false);
             drives.sort();
             for (const auto& d : drives)
             {
                 const auto name = d.getFileName();
-                if (name.startsWith ("acvs-") || name.startsWith (".")) continue;
-                if (name == "az01-internal")         add (d, "INTERNAL DRIVE");
-                else if (name == "az01-internal-sd") add (d, "INTERNAL SD");
-                else                                 add (d, "DRIVE  " + name);
+                if (name.startsWith ("acvs-") || name.startsWith (".") || name == "az01-internal") continue;
+                add (d, name == "az01-internal-sd" ? juce::String ("INTERNAL SD") : "SD / USB  " + name);
             }
-            if (env == nullptr) add (juce::File ("/sdcard"), "SDCARD");
+            for (const auto& line : juce::StringArray::fromLines (recentFile().loadFileAsString()))
+                if (line.isNotEmpty()) add (juce::File (line), "RECENT  " + juce::File (line).getFileName());
             add (samplesDir(), "PLUGIN SAMPLES FOLDER");
             add (dataRoot.getChildFile ("Library").getChildFile ("Factory Sounds"), "FACTORY SOUNDS");
+            if (! test) add (media.getChildFile ("az01-internal"), "SYSTEM DRIVE");
             return out;
+        }
+
+        /** Remembers the folder a sample was loaded from (the newest first, five at most). */
+        void rememberFolder (const juce::File& dir)
+        {
+            auto lines = juce::StringArray::fromLines (recentFile().loadFileAsString());
+            lines.removeString (dir.getFullPathName());
+            lines.removeEmptyStrings();
+            lines.insert (0, dir.getFullPathName());
+            while (lines.size() > 5) lines.remove (lines.size() - 1);
+            recentFile().replaceWithText (lines.joinIntoString ("\n"));
         }
 
         static std::vector<Entry> listFolder (const juce::File& dir)
@@ -1612,7 +1814,7 @@ namespace
             for (const auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles, false))
             {
                 if (dirs.size() + files.size() >= 999) break;
-                if (f.isDirectory())                             dirs.push_back ({ f, f.getFileName() + "   >", true });
+                if (f.isDirectory())                             dirs.push_back ({ f, f.getFileName() + "   /", true });
                 else if (tb::SampleManager::isSupportedFile (f)) files.push_back ({ f, f.getFileName(), false });
             }
             auto byName = [] (const Entry& a, const Entry& b) { return a.file.getFileName().compareNatural (b.file.getFileName()) < 0; };
@@ -1622,9 +1824,9 @@ namespace
             return dirs;
         }
 
-        /** Lists a folder (or the drives) on the worker; the cursor lands on `select` when it is there.
-            A refresh of the drive list never overrides a move the user made meanwhile (a newer request wins),
-            and changes nothing when the drives are the same. */
+        /** Lists a folder (or PLACES) on the worker; the cursor lands on `select` when it is there.
+            A refresh of PLACES never overrides a move made meanwhile (a newer request wins), and changes nothing
+            when the list is the same. */
         void browse (const juce::File& dir, bool root, const juce::File& select, bool refresh = false)
         {
             const uint32_t gen = refresh ? navGen.load() : ++navGen;
@@ -1646,12 +1848,13 @@ namespace
                         bool same = list.size() == entries.size();
                         for (size_t i = 0; same && i < list.size(); ++i) same = list[i].file == entries[i].file;
                         if (same) return;
+                        at = cursorIndex();
                     }
                     entries = std::move (list);
                     rootEntries = std::move (roots);
                     folder = root ? juce::File() : dir;
                     atRoot = root;
-                    cursor.store (at);
+                    cursor.store (juce::jlimit (0, juce::jmax (0, (int) entries.size() - 1), at));
                     navPending.store (false);
                 }
                 if (! root) lastFolderFile().replaceWithText (dir.getFullPathName());
@@ -1683,10 +1886,10 @@ namespace
             return n > 0 ? juce::jmax (0, cursor.load()) % n : 0;
         }
 
-        /** The knob (absolute, wraps), or a row tap (relative to the selection, stops at the ends). */
-        void moveCursor (int to, bool fromRow)
+        /** The knob (absolute, wraps), or a step from the selection (PAGE keys; stops at the ends). */
+        void moveCursor (int to, bool relative)
         {
-            if (fromRow)
+            if (relative)
             {
                 std::lock_guard<std::mutex> g (fileLock);
                 const int n = (int) entries.size();
@@ -1695,6 +1898,26 @@ namespace
             }
             else cursor.store (juce::jlimit (0, 998, to));
             previewDue.store (juce::Time::getMillisecondCounter() + 300);   // audition once the knob rests
+        }
+
+        /** A touch on list row `row`: a folder (or place) opens; a file is selected and heard; the selected file
+            again plays again. */
+        void listTap (int row)
+        {
+            Entry e;
+            bool same = false;
+            {
+                std::lock_guard<std::mutex> g (fileLock);
+                const int n = (int) entries.size(), c = cursorIndex();
+                const int i = (c / kList) * kList + row;
+                if (! juce::isPositiveAndBelow (i, n) || navPending.load()) return;
+                e = entries[(size_t) i];
+                same = i == c;
+                cursor.store (i);
+            }
+            markChanged ("smp_file");
+            if (e.dir)                                browse (e.file, false, {});
+            else if (same || smpAudition.load())      previewFile (e.file);
         }
 
         void openSelected (bool playFiles)
@@ -1716,13 +1939,13 @@ namespace
                 root = atRoot;
                 roots = rootEntries;
             }
-            if (root) { refreshDrives(); return; }   // on the drive list, BACK looks again (a stick just plugged in)
+            if (root) { refreshDrives(); return; }   // on PLACES, BACK looks again (a stick just plugged in)
             for (const auto& r : roots)
                 if (r.file == here) { browse ({}, true, here); return; }
             browse (here.getParentDirectory(), false, here);
         }
 
-        /** The drive list again, keeping the selection (drives come and go). */
+        /** PLACES again, keeping the selection (drives come and go). */
         void refreshDrives()
         {
             const auto keep = selectedEntry().file;
@@ -1744,6 +1967,7 @@ namespace
                 setStatus ("LOADED " + file.getFileNameWithoutExtension().toUpperCase() + " ONTO PAD " + tb::padLabel (pad)
                            + (slice ? ", SLICING" : ""));
             });
+            pool.addJob ([this, dir = e.file.getParentDirectory()] { rememberFolder (dir); });
         }
 
         void previewSelected()
@@ -1779,33 +2003,46 @@ namespace
         BrowserText browserTexts()
         {
             BrowserText out;
-            std::vector<Entry> list;
             {
                 std::lock_guard<std::mutex> g (fileLock);
                 const int c = cursorIndex(), n = (int) entries.size();
-                for (int r = 0; r < kRows; ++r)
+                const int page = c / kList, pages = juce::jmax (1, (n + kList - 1) / kList);
+                for (int r = 0; r < kList; ++r)
+                {
+                    const int i = page * kList + r;
+                    if (! juce::isPositiveAndBelow (i, n)) continue;
+                    auto label = entries[(size_t) i].label;
+                    if (label.length() > 52) label = label.substring (0, 49) + "...";
+                    out.list[(size_t) r] = label;
+                }
+                litRow.store (juce::isPositiveAndBelow (c, n) ? c - page * kList : -1);
+                if (n == 0) out.list[0] = atRoot ? "NO DRIVES FOUND" : "(NO FOLDERS OR AUDIO FILES HERE)";
+                if (navPending.load())
+                {
+                    for (auto& r : out.list) r.clear();
+                    out.list[0] = "LOADING...";
+                    litRow.store (-1);
+                }
+                for (int r = 0; r < kRows; ++r)   // the 1.1 rows (no longer on the skin)
                 {
                     const int i = c + r - kRows / 2;
                     if (juce::isPositiveAndBelow (i, n)) out.rows[(size_t) r] = entries[(size_t) i].label;
                 }
-                if (n == 0) out.rows[kRows / 2] = atRoot ? "NO DRIVES FOUND" : "(NO FOLDERS OR AUDIO FILES HERE)";
-                if (navPending.load())
-                {
-                    for (auto& r : out.rows) r.clear();
-                    out.rows[kRows / 2] = "LOADING...";
-                }
 
-                // the path, from the drive's name down
-                if (atRoot) out.path = "DRIVES";
+                // the path, from the place's name down
+                if (atRoot) out.path = "PLACES";
                 else
                 {
                     out.path = folder.getFullPathName();
+                    const juce::String* best = nullptr;
+                    int bestLen = -1;
                     for (const auto& r : rootEntries)
-                        if (folder == r.file || folder.isAChildOf (r.file))
+                        if ((folder == r.file || folder.isAChildOf (r.file)) && r.file.getFullPathName().length() > bestLen)
                         {
-                            out.path = r.label.replace ("  ", " ") + folder.getFullPathName().substring (r.file.getFullPathName().length());
-                            break;
+                            best = &r.label;
+                            bestLen = r.file.getFullPathName().length();
                         }
+                    if (best != nullptr) out.path = best->replace ("  ", " ") + folder.getFullPathName().substring (bestLen);
                     out.path = out.path.replace ("/", "  /  ");
                     if (out.path.length() > 80) out.path = "...  " + out.path.getLastCharacters (75);
                 }
@@ -1815,13 +2052,13 @@ namespace
                 {
                     const auto& e = entries[(size_t) c];
                     out.entry = e.file.getFileName();
-                    out.info << (c + 1) << " / " << n << "     "
-                             << (e.dir ? juce::String ("OPEN TO LOOK INSIDE") : "LOAD PUTS IT ON PAD " + pad);
+                    out.info << (c + 1) << " OF " << n << "   |   PAGE " << (page + 1) << " OF " << pages << "   |   "
+                             << (e.dir ? juce::String ("TAP A FOLDER TO OPEN IT") : "LOAD PUTS IT ON PAD " + pad);
                 }
-                else out.info = "PICK A DRIVE OR FOLDER";
+                else out.info = "PICK A PLACE";
             }
 
-            // on the drive list, look for drives every few seconds (a card or stick put in or taken out)
+            // on PLACES, look for drives every few seconds (a card or stick put in or taken out)
             bool root;
             {
                 std::lock_guard<std::mutex> g (fileLock);
@@ -1829,7 +2066,7 @@ namespace
             }
             if (root && juce::Time::getMillisecondCounter() - lastDriveScan > 3000) refreshDrives();
 
-            // audition the file the cursor came to rest on
+            // audition the file the knob came to rest on
             const uint32_t due = previewDue.load();
             if (due != 0 && juce::Time::getMillisecondCounter() >= due)
             {
@@ -2055,7 +2292,9 @@ namespace
         static constexpr int kSliceCounts[3] = { 4, 8, 16 };
         std::atomic<float> slSens { 0.5f };
         std::atomic<int>   slCountOption { 2 }, slPosValue { 0 };
-        std::atomic<bool>  slZoom { false };
+        std::atomic<int>   slView { 0 }, slSnap { 2 };
+        juce::Range<int>   viewFrozen;               // message thread (viewOf)
+        int viewPad = -1, viewSel = -1, viewMode = -1, viewN = -1;
         std::array<std::atomic<int>, kWaveCols> wave {}, tabs {};
         mutable std::mutex cacheLock;
         std::array<std::array<char, 100>, kAllTexts> texts {};
@@ -2069,6 +2308,7 @@ namespace
         std::atomic<bool> smpSliceOnLoad { true }, smpAudition { true };
         std::atomic<uint32_t> previewGen { 0 }, previewDue { 0 }, navGen { 0 };
         std::atomic<bool> navPending { false };
+        std::atomic<int>  litRow { -1 };
         juce::AudioFormatManager formats;
         std::array<std::atomic<bool>, tb::kNumPads> sliceWhenLoaded {};
         juce::ThreadPool pool { 1 };

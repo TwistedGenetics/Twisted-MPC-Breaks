@@ -30,8 +30,9 @@ the Q-Links drive it.
 |---|---|
 | KIT | Kit knob (one click = one kit, wraps round), ◀ PREV / NEXT ▶ (load straight away), LOAD KIT, SAVE (over the loaded kit when it is one of yours; a factory kit asks for a name), SAVE AS (a keyboard to name it), what's playing; status; **what shapes the sound** (pads following the MPC tempo, FX, macros, character, limiter); master level, limiter, scene A/B, crossfader |
 | PAD | The selected pad: gain, pitch, pan, start/end, velocity, mode, stretch, **tempo sync**, character, slice, reverse, choke, SWAP, group, and a line saying how it plays (e.g. "LOOP · FOLLOWS MPC TEMPO: 170 -> 120 BPM, REPITCH") |
-| SAMPLES | A browser of the MPC's own drives (internal drive, SD card, USB): turn SAMPLE or tap a row, tap the lit row (or OPEN) to go into a folder, BACK to come out; AUDITION plays each file as you land on it; LOAD puts it on the selected pad (sliced if SLICE ON LOAD is lit). It remembers the last folder. |
-| SLICE | The Mac app's green CRT: the selected pad's waveform with numbered slice markers, the selected slice lit, the playhead. FINGER ON THE WAVE: PICK (tap picks and plays a slice), MOVE (the nearest marker jumps to your finger), ADD (a marker where you tap), DEL (the nearest marker goes); SLICE / MOVE knobs pick a slice and shift its marker; ADD splits it, DELETE merges it, ZOOM shows just that slice; AUTO SLICE (SENS, COUNT), EQUAL, RESET, UNSLICE, SPREAD, PLAY |
+| SAMPLES | A touch list: PLACES first (MPC Samples, MPC Documents, Expansions, the internal drive as MPC shows it, SD and USB drives, RECENT folders, the plugin's folders). Tap a folder to open it, tap a file to hear it (again to replay), PAGE ▲ ▼, BACK; LOAD puts it on the selected pad (sliced if SLICE ON LOAD is lit) |
+| SLICE | Chopping on the green CRT: ZOOM (all, slice, 400 / 100 / 25 ms around the marker: at 25 ms one column is 0.4 ms), NUDGE ◀◀ ◀ ▶ ▶▶ (one or eight columns), TIGHTEN (the marker onto the start of its hit, at a zero crossing) and TIGHTEN ALL, MOVE knob (spans what the screen shows), SNAP TAPS TO off / zero / hit, FINGER ON THE WAVE pick / move / add / delete, ADD, DELETE, PLAY |
+| AUTO SLICE | Sensitivity, count, AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD onto pads |
 | STEPS | The selected pad's 32 steps as lamp keys, with a running playhead; length, step size, run, CLEAR |
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects; a red lamp over each lights while it is on (from a key, a pad held, or latched) |
@@ -56,8 +57,9 @@ the Q-Links drive it.
   it (the sequencer playing doesn't move the selection). Turn it off with FOLLOW HITS on the SETUP page.
 - **SWAP groups**: with the MPC playing, hitting the pad that is playing again does nothing (IGNORE); a hit while
   a hand-off to another pad is waiting cancels the hand-off. With the MPC stopped, loops play only while held.
-- **Moving a marker with your finger**: the MPC's screen sends a drag as small nudges, not a position, so markers
-  are placed by tapping: choose MOVE, tap where it should go (ZOOM first for millisecond accuracy).
+- **Tight chops**: AUTO SLICE, then on SLICE pick a slice, ZOOM 25 ms, NUDGE until it sits right (each nudge plays the
+  slice), or TIGHTEN to put it on the start of its hit. TIGHTEN ALL does every marker. The MPC's screen sends a drag
+  as small nudges, not a position, so a marker is moved by nudges, the MOVE knob, or a tap in MOVE mode.
 - **Which control am I on?** The control you touch gets an amber frame; the data wheel then turns that one.
 - **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Why does pad 01 sound slowed down / pitched?** The factory kit's break is a 170 BPM loop with TEMPO SYNC on,
@@ -93,7 +95,7 @@ GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.4)
+## Known limits (1.5)
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
 - Untested on hardware: CPU load, how smoothly the MPC redraws the slice screen and the STEPS playhead, and the
   skin's readability need a device check.
