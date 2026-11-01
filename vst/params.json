@@ -2711,6 +2711,245 @@
    ],
    "default": 0,
    "momentary": true
+  },
+  {
+   "key": "fx_sel",
+   "name": "Edit Effect",
+   "options": [
+    "Mute",
+    "LPF",
+    "HPF",
+    "BPF",
+    "Crush",
+    "Rate",
+    "Drive",
+    "Tape",
+    "Akaizer",
+    "Repeat",
+    "Gate",
+    "Pitch Drop",
+    "Delay",
+    "Reverb",
+    "Comb",
+    "Reverse"
+   ],
+   "default": 1
+  },
+  {
+   "key": "fx_on",
+   "name": "Effect On",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "fx_mode",
+   "name": "Key Mode",
+   "options": [
+    "Hold",
+    "Latch"
+   ],
+   "default": 1
+  },
+  {
+   "key": "fx_p1",
+   "name": "Setting 1",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "dynamic_display": true
+  },
+  {
+   "key": "fx_p2",
+   "name": "Setting 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "dynamic_display": true
+  },
+  {
+   "key": "fx_p3",
+   "name": "Setting 3",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "dynamic_display": true
+  },
+  {
+   "key": "fx_name",
+   "name": "Effect",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "fx_n1",
+   "name": "Setting 1 Name",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "fx_n2",
+   "name": "Setting 2 Name",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "fx_n3",
+   "name": "Setting 3 Name",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "kit_saveas",
+   "name": "Save Kit As",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "fx_lit_01",
+   "name": "FX 1 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_02",
+   "name": "FX 2 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_03",
+   "name": "FX 3 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_04",
+   "name": "FX 4 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_05",
+   "name": "FX 5 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_06",
+   "name": "FX 6 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_07",
+   "name": "FX 7 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_08",
+   "name": "FX 8 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_09",
+   "name": "FX 9 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_10",
+   "name": "FX 10 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_11",
+   "name": "FX 11 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_12",
+   "name": "FX 12 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_13",
+   "name": "FX 13 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_14",
+   "name": "FX 14 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_15",
+   "name": "FX 15 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "fx_lit_16",
+   "name": "FX 16 Lit",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "int"
   }
  ],
  "sections": [
@@ -3081,6 +3320,38 @@
     "kit_clear",
     "kit_cancel",
     "kit_ok"
+   ]
+  },
+  {
+   "label": "FX edit",
+   "keys": [
+    "fx_sel",
+    "fx_on",
+    "fx_mode",
+    "fx_p1",
+    "fx_p2",
+    "fx_p3",
+    "fx_name",
+    "fx_n1",
+    "fx_n2",
+    "fx_n3",
+    "kit_saveas",
+    "fx_lit_01",
+    "fx_lit_02",
+    "fx_lit_03",
+    "fx_lit_04",
+    "fx_lit_05",
+    "fx_lit_06",
+    "fx_lit_07",
+    "fx_lit_08",
+    "fx_lit_09",
+    "fx_lit_10",
+    "fx_lit_11",
+    "fx_lit_12",
+    "fx_lit_13",
+    "fx_lit_14",
+    "fx_lit_15",
+    "fx_lit_16"
    ]
   }
  ]

@@ -197,7 +197,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -213,12 +213,12 @@ namespace
     {
         tStatus, tSlInfo, tSmpInfo, tStInfo, tNoteInfo, tSlHead, tSlFoot, tSmpPath,
         tRow1, tRow2, tRow3, tRow4, tRow5, tRow6, tRow7,
-        tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, kNumTexts
+        tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, tFxName, tFxN1, tFxN2, tFxN3, kNumTexts
     };
     const char* const kTextKeys[kNumTexts] = {
         "status", "sl_info", "smp_info", "st_info", "note_info", "sl_head", "sl_foot", "smp_path",
         "smp_l1", "smp_l2", "smp_l3", "smp_l4", "smp_l5", "smp_l6", "smp_l7",
-        "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name"
+        "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name", "fx_name", "fx_n1", "fx_n2", "fx_n3"
     };
 
     // The naming keyboard's keys (tools/make_params.py KEY_CHARS): option i types kKeyChars[i]
@@ -248,6 +248,11 @@ namespace
                 else if (std::strcmp (k, "sl_pick") == 0)      in.kind = Kind::padParam;
                 else if (std::strcmp (k, "smp_file") == 0)     own (Own::smpFile);
                 else if (std::strcmp (k, "pad_follow") == 0)   own (Own::padFollow);
+                else if (std::strcmp (k, "fx_sel") == 0)       own (Own::fxSel);
+                else if (startsWith (k, "fx_lit_"))            own (Own::fxLit, std::atoi (k + 7) - 1);
+                else if (std::strcmp (k, "fx_on") == 0)        own (Own::fxOn);
+                else if (std::strcmp (k, "fx_mode") == 0)      own (Own::fxMode);
+                else if (startsWith (k, "fx_p") && std::isdigit ((unsigned char) k[4])) own (Own::fxP, std::atoi (k + 4) - 1);
                 else if (std::strcmp (k, "swap_rehit") == 0)   own (Own::swapRehit);
                 else if (std::strcmp (k, "sl_tap") == 0)       own (Own::slTap);
                 else if (std::strcmp (k, "kit_naming") == 0)   own (Own::kitNaming);
@@ -551,6 +556,13 @@ namespace
                 if (base == "kit")      return put (buf, len, kitName (selectedKit()));
                 if (base == "pad")      { const int p = selectedPad.load(); return put (buf, len, padText (p, proc->getSamples().getInfo (p))); }
                 if (base == "smp_file") return put (buf, len, selectedEntry().file.getFileName());
+                if (base.rfind ("fx_p", 0) == 0 && base.size() == 5)
+                {
+                    const int i = base[4] - '1';
+                    auto* p = fxSetting (i);
+                    if (p == nullptr) return put (buf, len, "-");
+                    return put (buf, len, tb::fx::valueText (tb::fx::def (fxSel.load()).params[i], p->convertFrom0to1 (p->getValue())));
+                }
                 if (base == "sl_pos")
                 {
                     const auto info = proc->getSamples().getInfo (selectedPad.load());
@@ -585,6 +597,13 @@ namespace
         {
             auto& apvts = proc->getParameters();
             for (int p = 0; p < tb::kNumPads; ++p) swapRaw[(size_t) p] = apvts.getRawParameterValue (tb::params::padId (p, tb::params::padSwap));
+            for (int g = 0; g < tb::kNumGroups; ++g)
+                for (int f = 0; f < tb::fx::kNumFx; ++f)
+                {
+                    fxOnPtr[(size_t) g][(size_t) f] = apvts.getParameter (tb::fx::paramId (g, f));
+                    for (int i = 0; i < 3; ++i)
+                        fxSetPtr[(size_t) g][(size_t) f][(size_t) i] = i < tb::fx::def (f).numParams ? apvts.getParameter (tb::fx::paramId (g, f, i)) : nullptr;
+                }
             globalPtr.assign ((size_t) NPARAMS, nullptr);
             padPtr.assign ((size_t) (NPARAMS * tb::kNumPads), nullptr);
             groupPtr.assign ((size_t) (NPARAMS * tb::kNumGroups), nullptr);
@@ -713,7 +732,7 @@ namespace
                 if (in.kind == Kind::text) continue;   // readouts: the wrapper polls their text
                 const float now = currentNorm (i);
                 const bool follows = (padMoved && (in.kind == Kind::padParam || in.own == Own::step || in.own == Own::slPos))
-                                     || (groupMoved && in.kind == Kind::fxParam);
+                                     || (groupMoved && (in.kind == Kind::fxParam || in.own == Own::fxP || in.own == Own::fxOn));
                 if (follows || std::abs (now - reported[(size_t) i]) > 1.0e-4f)
                 {
                     reported[(size_t) i] = now;
@@ -964,6 +983,13 @@ namespace
 
             releaseAudition();
             const auto screen = refreshScreen (pad, info);
+            const int fs = fxSel.load(), fg = fxGroup.load();
+            const auto& fd = tb::fx::def (fs);
+            const bool latched = (engine.getFxLockedMask() >> fs) & 1u;
+            const juce::String fxName = juce::String (fd.name) + "   |   GROUP " + juce::String::charToString ((juce::juce_wchar) ('A' + fg))
+                                      + "   |   " + (latched ? "LATCH: A HIT TURNS IT ON, THE NEXT OFF" : "HOLD: ON WHILE THE PAD IS HELD");
+            juce::String fxN[3];
+            for (int i = 0; i < 3; ++i) fxN[i] = i < fd.numParams ? juce::String (fd.params[i].label) : juce::String ("-");
             juce::String nameText;
             {
                 std::lock_guard<std::mutex> tg (textLock);
@@ -979,6 +1005,10 @@ namespace
             setText (tNoteInfo, nt);
             setText (tKitInfo, ki);
             setText (tKitNameEdit, nameText);
+            setText (tFxName, fxName);
+            setText (tFxN1, fxN[0]);
+            setText (tFxN2, fxN[1]);
+            setText (tFxN3, fxN[2]);
             setText (tKitName, selName);
             setText (tPadName, padText (pad, info));
             setText (tSlHead, screen.head);
@@ -1348,6 +1378,11 @@ namespace
             {
                 case Own::smpFile:     return (float) cursor.load();
                 case Own::padFollow:   return padFollow.load() ? 1.0f : 0.0f;
+                case Own::fxSel:       return (float) fxSel.load();
+                case Own::fxLit:       return (proc->getBridge().fxEngaged[(size_t) fxGroup.load()].load (std::memory_order_relaxed) >> in.sub) & 1u ? 1.0f : 0.0f;
+                case Own::fxOn:        { auto* p = fxOnPtr[(size_t) fxGroup.load()][(size_t) fxSel.load()]; return p != nullptr && p->getValue() > 0.5f ? 1.0f : 0.0f; }
+                case Own::fxMode:      return (proc->getEngine().getFxLockedMask() >> fxSel.load()) & 1u ? 1.0f : 0.0f;
+                case Own::fxP:         { auto* p = fxSetting (in.sub); return p != nullptr ? p->getValue() : 0.0f; }
                 case Own::swapRehit:   return swapIgnore.load() ? 0.0f : 1.0f;
                 case Own::slTap:       return (float) slTapMode.load();
                 case Own::kitNaming:   return kitNaming.load() ? 1.0f : 0.0f;
@@ -1377,6 +1412,21 @@ namespace
             {
                 case Own::smpFile:     moveCursor (juce::roundToInt (v), false); return;
                 case Own::padFollow:   padFollow.store (v > 0.5f); return;
+                case Own::fxLit:       return;
+                case Own::fxSel:       fxSel.store (juce::jlimit (0, tb::fx::kNumFx - 1, juce::roundToInt (v))); return;
+                case Own::fxOn:
+                    if (auto* p = fxOnPtr[(size_t) fxGroup.load()][(size_t) fxSel.load()]) p->setValueNotifyingHost (v > 0.5f ? 1.0f : 0.0f);
+                    return;
+                case Own::fxMode:
+                {
+                    auto& engine = proc->getEngine();
+                    const uint32_t bit = 1u << fxSel.load();
+                    engine.setFxLockedMask (v > 0.5f ? (engine.getFxLockedMask() | bit) : (engine.getFxLockedMask() & ~bit));
+                    return;
+                }
+                case Own::fxP:
+                    if (auto* p = fxSetting (in.sub)) p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
+                    return;
                 case Own::swapRehit:   swapIgnore.store (v < 0.5f); return;
                 case Own::slTap:       slTapMode.store (juce::jlimit (0, 3, juce::roundToInt (v))); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
                 case Own::kitNaming:
@@ -1460,7 +1510,8 @@ namespace
             }
             else if (std::strcmp (key, "st_clear") == 0)       proc->getBridge().seq.clearLane (pad);
             else if (std::strcmp (key, "note_learn") == 0)     proc->getEngine().startNoteLearn (pad);
-            else if (std::strcmp (key, "kit_save") == 0)       openNaming();
+            else if (std::strcmp (key, "kit_save") == 0)       juce::MessageManager::callAsync ([this] { saveOrName(); });
+            else if (std::strcmp (key, "kit_saveas") == 0)     openNaming();
             else if (std::strcmp (key, "kit_space") == 0)      typeName (" ");
             else if (std::strcmp (key, "kit_bksp") == 0)       { std::lock_guard<std::mutex> g (textLock); nameEdit = nameEdit.dropLastCharacters (1); }
             else if (std::strcmp (key, "kit_clear") == 0)      { std::lock_guard<std::mutex> g (textLock); nameEdit.clear(); }
@@ -1825,6 +1876,24 @@ namespace
             markChanged ("kit_naming");
         }
 
+        /** SAVE: over the loaded kit when it is one of yours; a factory kit (or none) asks for a name. Message thread. */
+        void saveOrName()
+        {
+            juce::String loaded;
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                loaded = loadedKit;
+            }
+            juce::File file;
+            {
+                std::lock_guard<std::mutex> g (kitLock);
+                const int i = kitNames.indexOf (loaded);
+                if (i >= factoryKits && i >= 0) file = kitFiles[i];
+            }
+            if (file == juce::File()) { openNaming(); return; }
+            saveKitHere (loaded, file);
+        }
+
         void closeNaming()
         {
             kitNaming.store (false);
@@ -1842,20 +1911,21 @@ namespace
         //======================================================================
         //  SAVE KIT (message thread): the whole kit, samples inside, under the name typed
         //======================================================================
-        void saveKitHere (const juce::String& typed)
+        void saveKitHere (const juce::String& typed, juce::File target = {})
         {
             auto& presets = proc->getPresets();
             const auto dir = presets.presetsFolder (tb::PresetManager::Type::kit);
             dir.createDirectory();
-            const juce::String name = juce::File::createLegalFileName (typed).trim();
+            const juce::String name = target != juce::File() ? typed : juce::File::createLegalFileName (typed).trim();
             if (name.isEmpty()) { setStatus ("THAT NAME CAN'T BE A FILE NAME"); return; }
-            const bool replacing = dir.getChildFile (name + ".tbkit").existsAsFile();
+            if (target == juce::File()) target = dir.getChildFile (name + ".tbkit");
+            const bool replacing = target.existsAsFile();
             tb::PresetManager::Meta meta;
             meta.type = tb::PresetManager::Type::kit;
             meta.name = name;
             meta.tags = { "MPC" };
             meta.created = juce::Time::getCurrentTime();
-            const auto r = presets.saveKit (dir.getChildFile (name + ".tbkit"), meta);
+            const auto r = presets.saveKit (target, meta);
             if (r.failed()) { setStatus ("SAVE FAILED: " + r.getErrorMessage().toUpperCase()); return; }
             rescanKits();
             {
@@ -1867,7 +1937,7 @@ namespace
                 loadedKit = name;
             }
             markChanged ("kit");
-            setStatus ((replacing ? "REPLACED " : "SAVED ") + name.toUpperCase());
+            setStatus ((replacing ? "SAVED OVER " : "SAVED ") + name.toUpperCase());
         }
 
         //======================================================================
@@ -1883,9 +1953,17 @@ namespace
                 juce::GZIPCompressorOutputStream gz (packed, 9);
                 gz.write (rawState.getData(), rawState.getSize());
             }
-            // TBM1:<kit>:<pad>:<fx group>:<the processor's state, gzipped, base64>
+            // TBM1:<kit>:<pad>:<fx group>:<the processor's state, gzipped, base64>:<loaded kit's name, base64>:<FX key modes>
+            // (1.4 added the last two; an older plugin reads the first four)
+            juce::String loaded;
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                loaded = loadedKit.isEmpty() ? juce::String ("SAVED PROJECT") : loadedKit;
+            }
+            const auto nameBlock = juce::MemoryBlock (loaded.toRawUTF8(), loaded.getNumBytesAsUTF8());
             const auto text = juce::String (kStatePrefix) + juce::String (kitIndex.load()) + ":" + juce::String (selectedPad.load())
-                            + ":" + juce::String (fxGroup.load()) + ":" + packed.getMemoryBlock().toBase64Encoding();
+                            + ":" + juce::String (fxGroup.load()) + ":" + packed.getMemoryBlock().toBase64Encoding()
+                            + ":" + nameBlock.toBase64Encoding() + ":" + juce::String ((int64_t) proc->getEngine().getFxLockedMask());
             if (text.getNumBytesAsUTF8() + 1 > (size_t) len) return 0;   // never save half a state
             return put (buf, len, text);
         }
@@ -1894,7 +1972,7 @@ namespace
         {
             if (text == nullptr || ! startsWith (text, kStatePrefix)) return;
             auto fields = juce::StringArray::fromTokens (juce::String::fromUTF8 (text + std::strlen (kStatePrefix)), ":", "");
-            if (fields.size() != 4) return;
+            if (fields.size() < 4) return;
             juce::MemoryBlock packed;
             if (! packed.fromBase64Encoding (fields[3])) return;
 
@@ -1913,9 +1991,14 @@ namespace
             });
             kitIndex.store (juce::jmax (0, fields[0].getIntValue()));
             {
+                juce::String name = "SAVED PROJECT";
+                juce::MemoryBlock nb;
+                if (fields.size() >= 5 && fields[4].isNotEmpty() && nb.fromBase64Encoding (fields[4]))
+                    name = juce::String::fromUTF8 ((const char*) nb.getData(), (int) nb.getSize());
                 std::lock_guard<std::mutex> g (textLock);
-                loadedKit = "SAVED PROJECT";
+                loadedKit = name;
             }
+            if (fields.size() >= 6) proc->getEngine().setFxLockedMask ((uint32_t) fields[5].getLargeIntValue());
             const int pad = juce::jlimit (0, tb::kNumPads - 1, fields[1].getIntValue());
             selectedPad.store (pad);
             proc->getBridge().selectedPad.store (pad);
@@ -1929,6 +2012,14 @@ namespace
         juce::File dataRoot;
         std::vector<juce::RangedAudioParameter*> globalPtr, padPtr, groupPtr;
         std::array<std::atomic<float>*, tb::kNumPads> swapRaw {};
+        std::array<std::array<juce::RangedAudioParameter*, tb::fx::kNumFx>, tb::kNumGroups> fxOnPtr {};
+        std::array<std::array<std::array<juce::RangedAudioParameter*, 3>, tb::fx::kNumFx>, tb::kNumGroups> fxSetPtr {};
+        std::atomic<int> fxSel { 1 };
+
+        juce::RangedAudioParameter* fxSetting (int i) const
+        {
+            return i >= 0 && i < 3 ? fxSetPtr[(size_t) fxGroup.load()][(size_t) fxSel.load()][(size_t) i] : nullptr;
+        }
         std::array<bool, 128> droppedNote {};          // audio thread only
         std::atomic<bool> swapIgnore { true };
 

@@ -441,6 +441,13 @@ class Tab:
             self.vfd_window(cx, cy, w, h)
         self.add(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize, tcolor=tcolor, talign=talign))
 
+    def lamp(self, key, cx, cy):
+        """A red lamp lit by a 0/1 parameter (an effect that is on): the unlit glass is drawn into the tab."""
+        d = self.draw
+        d.ellipse(((cx - 8) * SS, (cy - 8) * SS, (cx + 8) * SS, (cy + 8) * SS), fill=(10, 8, 8))
+        d.ellipse(((cx - 6) * SS, (cy - 6) * SS, (cx + 6) * SS, (cy + 6) * SS), fill=(70, 18, 12))
+        self.add(dict(kind="lamp", key=key, cx=cx, cy=cy, w=28, h=28))
+
     def hit(self, key, cx, cy, w, h):
         """An invisible touch area firing a trigger (a browser row)."""
         self.add(dict(kind="hit", key=key, cx=cx, cy=cy, w=w, h=h))
@@ -763,6 +770,25 @@ def render_control(tab, c, out, slug, prev):
             rows = " rows=%d" % c["rows"] if c.get("rows", 1) > 1 else ""
             out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d%s img=art/clear.png img_on=art/%s' %
                              (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"], rows, on))
+        elif k == "lamp":
+            w, h = c["w"], c["h"]
+            if "fx_lamp" not in out.strips:
+                frames = []
+                for lit in (0, 1):
+                    fr = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+                    if lit:
+                        x = y = w * SS / 2
+                        glow = Image.new("RGBA", fr.size, (0, 0, 0, 0))
+                        ImageDraw.Draw(glow).ellipse((x - 13 * SS, y - 13 * SS, x + 13 * SS, y + 13 * SS), fill=RED + (190,))
+                        fr.alpha_composite(glow.filter(ImageFilter.GaussianBlur(4 * SS)))
+                        ImageDraw.Draw(fr).ellipse((x - 6 * SS, y - 6 * SS, x + 6 * SS, y + 6 * SS), fill=(255, 120, 90, 255))
+                    frames.append(fr.resize((w, h), Image.LANCZOS))
+                stp = Image.new("RGBA", (w, h * 2), (0, 0, 0, 0))
+                for i, f in enumerate(frames):
+                    stp.paste(f, (0, i * h))
+                out.save(stp, "fx_lamp.png")
+                out.strips["fx_lamp"] = frames
+            out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/fx_lamp.png frames=2' % (c["cx"], c["cy"] + Y_OFF, w, h, key))
         elif k == "hit":
             out.lines.append('button cx=%d cy=%d label="" key=%s img=art/clear.png img_on=art/clear.png w=%d h=%d ns=0' %
                              (c["cx"], c["cy"] + Y_OFF, key, c["w"], c["h"]))
@@ -816,7 +842,7 @@ def kit_naming_overlay(kit):
 
 
 def tab_kit():
-    t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_prev", "kit_next", "kit_save", "master_gain", "master_limiter", "scene_view",
+    t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_prev", "kit_next", "kit_save", "kit_saveas", "master_gain", "master_limiter", "scene_view",
                              "xfade", "xfade_curve"])], 101)
     t.panel(14, 64, 760, 270, "KIT SELECT")
     t.panel(14, 344, 760, 270, "STATUS")
@@ -826,10 +852,11 @@ def tab_kit():
     t.knob("kit", 92, 196, 42, "KIT", bw=112, value=False)
     t.readout("kit", 462, 150, 560, 56, tsize=30, name="SELECTED KIT")
     t.readout("kit_info", 462, 208, 600, 34, tsize=18)
-    t.button("kit_prev", 232, 284, "◀ PREV", w=130, h=56)
-    t.button("kit_load", 384, 284, "LOAD KIT", w=160, h=56)
-    t.button("kit_next", 536, 284, "NEXT ▶", w=130, h=56)
-    t.button("kit_save", 690, 284, "SAVE KIT", w=140, h=56)
+    t.button("kit_prev", 100, 284, "◀ PREV", w=120, h=56)
+    t.button("kit_load", 245, 284, "LOAD KIT", w=150, h=56)
+    t.button("kit_next", 390, 284, "NEXT ▶", w=120, h=56)
+    t.button("kit_save", 535, 284, "SAVE", w=150, h=56)
+    t.button("kit_saveas", 690, 284, "SAVE AS", w=140, h=56)
     t.readout("status", 394, 412, 700, 48, tsize=22, name="PLANT STATUS")
     t.caption(394, 476, "WHAT SHAPES THE SOUND")
     t.readout("snd_info1", 394, 516, 720, 40, tsize=18)
@@ -1144,6 +1171,26 @@ def tab_fx():
     for i, (k, lab) in enumerate(FX):
         row, col = divmod(i, 8)
         t.toggle("fx_" + k, 104 + col * 153, 300 + row * 170, lab, w=138, h=96)
+        t.lamp("fx_lit_%02d" % (i + 1), 104 + col * 153, 236 + row * 170)
+    t.text(1250, 236, "ON", size=13, anchor="rm")
+    return t
+
+
+def tab_fx_edit():
+    keys = ["fx_sel", "fx_p1", "fx_p2", "fx_p3", "fx_mode", "fx_on", "fx_group"]
+    t = Tab("FX EDIT", [("FX EDIT", keys)], 414)
+    t.panel(14, 64, 1252, 250, "EFFECT")
+    t.keys("fx_sel", 640, 144, [lab for _, lab in FX], 136, 64, rows=2, label_size=15)
+    t.readout("fx_name", 640, 270, 1180, 40, tsize=20)
+    t.panel(14, 324, 860, 290, "SETTINGS")
+    for i in range(3):
+        cx = 160 + i * 270
+        t.readout("fx_n%d" % (i + 1), cx, 372, 230, 32, tsize=22, tcolor="d9d2bd", window=False)
+        t.knob("fx_p%d" % (i + 1), cx, 470, 54, "", bw=180)
+    t.panel(886, 324, 380, 290, "KEYS")
+    t.keys("fx_group", 1076, 390, ["A", "B", "C", "D"], 70, 48, name="GROUP")
+    t.keys("fx_mode", 1076, 484, ["HOLD", "LATCH"], 140, 60, name="KEY MODE")
+    t.toggle("fx_on", 1076, 574, "EFFECT ON", w=284, h=50)
     return t
 
 
@@ -1187,7 +1234,7 @@ def build():
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
     tiles = []
-    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_steps, tab_sequencer, tab_fx, tab_macros, tab_mixer, tab_setup):
+    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_macros, tab_mixer, tab_setup):
         tab = make()
         bg = render(tab, out)
         tiles.append(bg)

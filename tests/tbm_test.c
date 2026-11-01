@@ -355,7 +355,7 @@ int main(void) {
     CHECK(plain(a, "kit_naming") > 0.5f, "SAVE KIT opens the keyboard");
     display(a, "kit_name", text);
     printf("     name offered: '%s'\n", text);
-    CHECK(strstr(text, "MPC KIT") != NULL, "it offers a name ('%s')", text);
+    CHECK(strstr(text, "MPC KIT") != NULL, "a factory kit can't be saved over: SAVE asks for a name ('%s')", text);
     a->setP(a, idx("kit_clear"), 1); run(a, 2); a->setP(a, idx("kit_clear"), 0);
     const char *keys = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()";
     for (const char *c = "JUNGLE 11"; *c; c++) {
@@ -369,19 +369,51 @@ int main(void) {
     a->setP(a, idx("kit_ok"), 1); run(a, 4); a->setP(a, idx("kit_ok"), 0);
     for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "ED JUNGLE 1")) break; }
     printf("     after SAVE: '%s'\n", text);
-    CHECK(strstr(text, "SAVED JUNGLE 1") != NULL || strstr(text, "REPLACED JUNGLE 1") != NULL, "saved under its name ('%s')", text);
+    CHECK(strstr(text, "SAVED JUNGLE 1") != NULL || strstr(text, "SAVED OVER JUNGLE 1") != NULL, "saved under its name ('%s')", text);
     CHECK(plain(a, "kit_naming") < 0.5f, "and the keyboard closes");
     display(a, "kit", text2);
     CHECK(strcmp(text2, "JUNGLE 1") == 0, "KIT selector shows it ('%s')", text2);
-    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0); settle(a, 200);
+    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0);
+    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "SAVED OVER")) break; }
+    CHECK(strstr(text, "SAVED OVER JUNGLE 1") != NULL && plain(a, "kit_naming") < 0.5f,
+          "SAVE again saves over the loaded kit, no keyboard, no new name ('%s')", text);
+    display(a, "kit", text2);
+    CHECK(strcmp(text2, "JUNGLE 1") == 0, "still JUNGLE 1 selected ('%s')", text2);
+    a->setP(a, idx("kit_saveas"), 1); run(a, 4); a->setP(a, idx("kit_saveas"), 0); settle(a, 200);
     display(a, "kit_name", text);
-    CHECK(strcmp(text, "JUNGLE 1_") == 0, "saving again offers the kit's own name ('%s')", text);
-    a->setP(a, idx("kit_ok"), 1); run(a, 4); a->setP(a, idx("kit_ok"), 0);
-    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "REPLACED")) break; }
-    CHECK(strstr(text, "REPLACED JUNGLE 1") != NULL, "and replaces it ('%s')", text);
-    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0); run(a, 4);
+    CHECK(plain(a, "kit_naming") > 0.5f && strcmp(text, "JUNGLE 1_") == 0, "SAVE AS opens the keyboard with its name ('%s')", text);
     a->setP(a, idx("kit_cancel"), 1); run(a, 4); a->setP(a, idx("kit_cancel"), 0); run(a, 4);
     CHECK(plain(a, "kit_naming") < 0.5f, "CANCEL closes it without saving");
+
+    /* 2f2. FX EDIT: the selected effect's settings and key mode, in the FX group */
+    set_plain(a, "fx_group", 0); set_plain(a, "fx_sel", 1); run(a, 2);   /* LPF */
+    settle(a, 200);
+    display(a, "fx_n1", text); display(a, "fx_name", text2);
+    printf("     FX EDIT: '%s' / first setting '%s'\n", text2, text);
+    CHECK(strcmp(text, "CUTOFF") == 0 && strstr(text2, "LOW PASS"), "LPF's first setting is CUTOFF");
+    set_plain(a, "fx_p1", 0.2f); run(a, 2);
+    display(a, "fx_p1", text);
+    CHECK(fabsf(plain(a, "fx_p1") - 0.2f) < 0.01f && strstr(text, "Hz") != NULL, "CUTOFF set: %s", text);
+    set_plain(a, "fx_sel", 4); run(a, 2);   /* CRUSH */
+    float crushBits = plain(a, "fx_p1");
+    set_plain(a, "fx_sel", 1); run(a, 2);
+    CHECK(fabsf(plain(a, "fx_p1") - 0.2f) < 0.01f && fabsf(crushBits - 0.2f) > 0.01f, "each effect keeps its own settings");
+    set_plain(a, "fx_on", 1); run(a, 2);
+    CHECK(plain(a, "fx_lpf") > 0.5f, "EFFECT ON turns LPF on (the FX page's key too)");
+    set_plain(a, "fx_on", 0); run(a, 2);
+    set_plain(a, "fx_mode", 0); run(a, 2);
+    CHECK(plain(a, "fx_mode") < 0.5f, "LPF set to HOLD");
+    /* note 61 = FX 2 (LPF); the engine engages it (the KIT page's "what shapes the sound" line lists it) */
+    note(a, 1, 61, 100); settle(a, 250); display(a, "snd_info2", text);
+    int heldOn = strstr(text, "LPF") != NULL;
+    note(a, 0, 61, 0); settle(a, 250); display(a, "snd_info2", text);
+    CHECK(heldOn && strstr(text, "LPF") == NULL, "HOLD: on while the note is held, off when let go ('%s')", text);
+    set_plain(a, "fx_mode", 1); run(a, 2);
+    note(a, 1, 61, 100); run(a, 4); note(a, 0, 61, 0); settle(a, 250); display(a, "snd_info2", text);
+    CHECK(strstr(text, "LPF") != NULL, "LATCH: a hit turns it on and it stays on ('%s')", text);
+    note(a, 1, 61, 100); run(a, 4); note(a, 0, 61, 0); settle(a, 250); display(a, "snd_info2", text);
+    CHECK(strstr(text, "LPF") == NULL, "and the next hit turns it off ('%s')", text);
+    set_plain(a, "pad", 1); run(a, 2);
 
     /* 2g. SWAP RE-HIT: pad 5 (made a loop) in SWAP group 1, the MPC playing (stopped, loops only play while held);
      * a second hit is ignored, with STOP it stops it */

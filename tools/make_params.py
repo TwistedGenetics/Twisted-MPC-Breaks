@@ -219,5 +219,20 @@ section("Edit", [
     trig("kit_ok", "Save Named Kit"),
 ])
 
+# ---- 1.4: FX EDIT (the selected effect's settings and key mode), SAVE AS ------------------------------------
+section("FX edit", [
+    opts("fx_sel", "Edit Effect", [n for _, n in FX], 1),
+    opts("fx_on", "Effect On", ONOFF, 0),
+    opts("fx_mode", "Key Mode", ["Hold", "Latch"], 1),
+    num("fx_p1", "Setting 1", 0, 1, 0.5, dynamic_display=True),
+    num("fx_p2", "Setting 2", 0, 1, 0.5, dynamic_display=True),
+    num("fx_p3", "Setting 3", 0, 1, 0.5, dynamic_display=True),
+    readout("fx_name", "Effect"),
+    readout("fx_n1", "Setting 1 Name"),
+    readout("fx_n2", "Setting 2 Name"),
+    readout("fx_n3", "Setting 3 Name"),
+    trig("kit_saveas", "Save Kit As"),
+] + [num("fx_lit_%02d" % (i + 1), "FX %d Lit" % (i + 1), 0, 1, 0, display="int") for i in range(16)])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))
