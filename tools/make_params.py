@@ -204,5 +204,20 @@ section("Sound", [
 # ---- 1.2: hitting a pad selects it (every page then shows that pad) --------------------------------------
 section("Follow", [opts("pad_follow", "Pad Follows Hits", ONOFF, 1)])
 
+# ---- 1.3: re-hits in SWAP groups, finger editing of slices, naming a kit ------------------------------------
+KEY_CHARS = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()"   # src/MpcHost.cpp kKeyChars: 4 rows of 11, the last one "None"
+section("Edit", [
+    opts("swap_rehit", "Swap Re-hit", ["Ignore", "Stop"], 0),
+    opts("sl_tap", "Tap Does", ["Pick", "Move", "Add", "Delete"], 0),
+    opts("kit_naming", "Naming", ONOFF, 0),
+    opts("kit_key", "Name Key", ["Key %d" % (i + 1) for i in range(len(KEY_CHARS))] + ["None"], len(KEY_CHARS)),
+    readout("kit_name", "Kit Name"),
+    trig("kit_space", "Space"),
+    trig("kit_bksp", "Delete Letter"),
+    trig("kit_clear", "Clear Name"),
+    trig("kit_cancel", "Cancel"),
+    trig("kit_ok", "Save Named Kit"),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

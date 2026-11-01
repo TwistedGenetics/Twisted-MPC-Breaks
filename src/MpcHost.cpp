@@ -197,7 +197,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, padFollow, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -213,13 +213,18 @@ namespace
     {
         tStatus, tSlInfo, tSmpInfo, tStInfo, tNoteInfo, tSlHead, tSlFoot, tSmpPath,
         tRow1, tRow2, tRow3, tRow4, tRow5, tRow6, tRow7,
-        tSpInfo, tSnd1, tSnd2, tKitInfo, kNumTexts
+        tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, kNumTexts
     };
     const char* const kTextKeys[kNumTexts] = {
         "status", "sl_info", "smp_info", "st_info", "note_info", "sl_head", "sl_foot", "smp_path",
         "smp_l1", "smp_l2", "smp_l3", "smp_l4", "smp_l5", "smp_l6", "smp_l7",
-        "sp_info", "snd_info1", "snd_info2", "kit_info"
+        "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name"
     };
+
+    // The naming keyboard's keys (tools/make_params.py KEY_CHARS): option i types kKeyChars[i]
+    constexpr const char* kKeyChars = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()";
+    constexpr int kNumKeys = 43;
+    constexpr int kNameMax = 24;
 
     const std::vector<Info>& infos()
     {
@@ -243,6 +248,10 @@ namespace
                 else if (std::strcmp (k, "sl_pick") == 0)      in.kind = Kind::padParam;
                 else if (std::strcmp (k, "smp_file") == 0)     own (Own::smpFile);
                 else if (std::strcmp (k, "pad_follow") == 0)   own (Own::padFollow);
+                else if (std::strcmp (k, "swap_rehit") == 0)   own (Own::swapRehit);
+                else if (std::strcmp (k, "sl_tap") == 0)       own (Own::slTap);
+                else if (std::strcmp (k, "kit_naming") == 0)   own (Own::kitNaming);
+                else if (std::strcmp (k, "kit_key") == 0)      own (Own::kitKey);
                 else if (std::strcmp (k, "smp_slice") == 0)    own (Own::smpSlice);
                 else if (std::strcmp (k, "smp_audition") == 0) own (Own::smpAudition);
                 else if (std::strcmp (k, "st_pos") == 0)       own (Own::stPos);
@@ -334,6 +343,7 @@ namespace
         void midiIn (const uint8_t* msg, int len)
         {
             if (len <= 0 || len > 3) return;
+            if (len == 3 && dropRehit (msg)) return;
             midi.addEvent (msg, len, 0);
             // A pad hit selects that pad, so every page shows the pad just played (not while LEARN waits for a note).
             if (len == 3 && (msg[0] & 0xf0) == 0x90 && msg[2] > 0 && padFollow.load (std::memory_order_relaxed))
@@ -383,6 +393,35 @@ namespace
 
             releaseTriggers (frames);
             pollChanges (frames);
+        }
+
+        /** SWAP RE-HIT = IGNORE: a hit on the pad its SWAP group is playing does nothing (the engine would stop it at
+            the next swap point); its note-off goes too. A hit while a hand-off to another pad is queued still reaches
+            the engine, which cancels that hand-off (the loop plays on). Audio thread, lock-free. */
+        bool dropRehit (const uint8_t* msg)
+        {
+            const int status = msg[0] & 0xf0, note = msg[1] & 0x7f;
+            if (status == 0x80 || (status == 0x90 && msg[2] == 0))
+            {
+                if (! droppedNote[(size_t) note]) return false;
+                droppedNote[(size_t) note] = false;
+                return true;
+            }
+            if (status != 0x90 || ! swapIgnore.load (std::memory_order_relaxed)) return false;
+            auto& engine = proc->getEngine();
+            if (engine.getNoteLearnPad() >= 0) return false;
+            const int pad = engine.padForNote (note);
+            if (pad < 0 || swapRaw[(size_t) pad] == nullptr) return false;
+            const int group = juce::roundToInt (swapRaw[(size_t) pad]->load (std::memory_order_relaxed));
+            auto& bridge = proc->getBridge();
+            if (group <= 0 || bridge.padPlayhead[(size_t) pad].load (std::memory_order_relaxed) < 0.0f) return false;
+            for (int q = 0; q < tb::kNumPads; ++q)
+                if (q != pad && swapRaw[(size_t) q] != nullptr && juce::roundToInt (swapRaw[(size_t) q]->load (std::memory_order_relaxed)) == group
+                    && bridge.padQueued[(size_t) q].load (std::memory_order_relaxed))
+                    return false;   // a hand-off is waiting: this hit cancels it, the loop plays on
+            droppedNote[(size_t) note] = true;
+            if (padFollow.load (std::memory_order_relaxed)) { selectedPad.store (pad); bridge.selectedPad.store (pad); }
+            return true;
         }
 
         /** juce::AudioPlayHead: what Twisted Breaks' TransportSync reads. MPC gives the song
@@ -545,6 +584,7 @@ namespace
         void buildPointers()
         {
             auto& apvts = proc->getParameters();
+            for (int p = 0; p < tb::kNumPads; ++p) swapRaw[(size_t) p] = apvts.getRawParameterValue (tb::params::padId (p, tb::params::padSwap));
             globalPtr.assign ((size_t) NPARAMS, nullptr);
             padPtr.assign ((size_t) (NPARAMS * tb::kNumPads), nullptr);
             groupPtr.assign ((size_t) (NPARAMS * tb::kNumGroups), nullptr);
@@ -709,9 +749,12 @@ namespace
                         files.add (m.file);
                     }
 
+            int factory = 0;
+            for (const auto& m : presets.getList()) if (m.factory) ++factory;
             std::lock_guard<std::mutex> g (kitLock);
             kitNames = names;
             kitFiles = files;
+            factoryKits = factory;
         }
 
         int kitCount() const
@@ -819,8 +862,14 @@ namespace
         //======================================================================
         void setStatus (const juce::String& s)
         {
+            // on the message thread, what the kit loader said so far is older than this
+            juce::String presetNow;
+            const bool here = juce::MessageManager::existsAndIsCurrentThread();
+            if (here) presetNow = proc->getPresets().getStatus();
             std::lock_guard<std::mutex> g (textLock);
             status = s;
+            statusFromPresets = false;
+            if (here) lastPresetStatus = presetNow;
         }
 
         // Readout slots past the readout parameters: texts other parameters show as their value.
@@ -843,13 +892,18 @@ namespace
             controls show, copied where the audio thread can read it without allocating. */
         void refreshInfo()
         {
+            // the kit loader's own line shows when it is newer than ours
             juce::String st;
+            const auto presetStatus = proc->getPresets().getStatus();
             {
                 std::lock_guard<std::mutex> g (textLock);
-                st = status;
+                if (presetStatus != lastPresetStatus)
+                {
+                    lastPresetStatus = presetStatus;
+                    statusFromPresets = presetStatus.isNotEmpty();
+                }
+                st = statusFromPresets ? presetStatus : status;
             }
-            const auto presetStatus = proc->getPresets().getStatus();
-            if (presetStatus.isNotEmpty()) st = presetStatus;
 
             const int pad = selectedPad.load();
             const auto info = proc->getSamples().getInfo (pad);
@@ -910,6 +964,11 @@ namespace
 
             releaseAudition();
             const auto screen = refreshScreen (pad, info);
+            juce::String nameText;
+            {
+                std::lock_guard<std::mutex> tg (textLock);
+                nameText = nameEdit + "_";
+            }
             const auto sound = soundInfo (pad, info);
             const auto browser = browserTexts();
 
@@ -919,6 +978,7 @@ namespace
             setText (tStInfo, stp);
             setText (tNoteInfo, nt);
             setText (tKitInfo, ki);
+            setText (tKitNameEdit, nameText);
             setText (tKitName, selName);
             setText (tPadName, padText (pad, info));
             setText (tSlHead, screen.head);
@@ -1027,8 +1087,11 @@ namespace
             out.head << "PAD " << tb::padLabel (pad) << "   " << info.name.toUpperCase() << "      " << seconds (len)
                      << "   " << juce::String (rate / 1000.0, 1) << " kHz   " << (buf->getNumChannels() > 1 ? "STEREO" : "MONO");
 
-            if (info.slicing)       out.foot = "SLICING...";
-            else if (t.isEmpty())   out.foot = "NOT SLICED: AUTO SLICE, EQUAL, OR ADD A MARKER";
+            static const char* const tapText[] = { "", "MOVE: TAP WHERE THE NEAREST MARKER GOES  |  ", "ADD: TAP TO PUT A MARKER  |  ",
+                                                   "DELETE: TAP NEAR A MARKER  |  " };
+            out.foot = tapText[juce::jlimit (0, 3, slTapMode.load())];
+            if (info.slicing)       out.foot << "SLICING...";
+            else if (t.isEmpty())   out.foot << "NOT SLICED: AUTO SLICE, EQUAL, OR ADD A MARKER";
             else
             {
                 const auto r = t.region (sel, n);
@@ -1123,20 +1186,63 @@ namespace
             releasePad = -1;
         }
 
-        /** A tap on the waveform: the slice under it is selected and played. */
+        /** A tap on the waveform, by TAP mode: PICK selects and plays the slice under the finger; MOVE brings the
+            nearest marker to the finger; ADD puts a marker there; DELETE removes the nearest marker. */
         void waveTap (int column)
         {
             const int pad = selectedPad.load();
-            juce::MessageManager::callAsync ([this, pad, column]
+            const int mode = slTapMode.load();
+            juce::MessageManager::callAsync ([this, pad, column, mode]
             {
-                const auto info = proc->getSamples().getInfo (pad);
+                auto& samples = proc->getSamples();
+                const auto info = samples.getInfo (pad);
                 const int n = info.buffer != nullptr ? info.buffer->getNumSamples() : 0;
                 if (n <= 0) return;
-                const auto view = viewOf (info, selectedSlice (pad, info.slices));
+                const auto& t = info.slices;
+                const auto view = viewOf (info, selectedSlice (pad, t));
                 const int at = view.getStart() + (int) ((int64_t) view.getLength() * (2 * column + 1) / (2 * kWaveCols));
-                const int slice = info.slices.isEmpty() ? 0 : info.slices.sliceAt (at);
-                if (! info.slices.isEmpty()) setPadSlice (pad, slice);
-                audition (pad, slice);
+                auto nearest = [&t, at]
+                {
+                    int best = 0;
+                    for (int k = 1; k < t.count; ++k)
+                        if (std::abs (t.starts[(size_t) k] - at) < std::abs (t.starts[(size_t) best] - at)) best = k;
+                    return best;
+                };
+                switch (mode)
+                {
+                    case 1:   // MOVE
+                        if (t.isEmpty()) { samples.addMarker (pad, at); setPadSlice (pad, 1); break; }
+                        {
+                            const int k = nearest();
+                            samples.moveMarker (pad, k, at);
+                            setPadSlice (pad, k);
+                            audition (pad, k);
+                        }
+                        break;
+                    case 2:   // ADD
+                        if (samples.addMarker (pad, at))
+                        {
+                            const int k = samples.getInfo (pad).slices.sliceAt (at);
+                            setPadSlice (pad, k);
+                            audition (pad, k);
+                        }
+                        else setStatus ("16 SLICES IS THE MOST: DELETE ONE FIRST");
+                        break;
+                    case 3:   // DELETE
+                        if (! t.isEmpty())
+                        {
+                            const int k = nearest();
+                            samples.deleteMarker (pad, k);
+                            setPadSlice (pad, juce::jmax (0, k - 1));
+                        }
+                        break;
+                    default:  // PICK
+                    {
+                        const int slice = t.isEmpty() ? 0 : t.sliceAt (at);
+                        if (! t.isEmpty()) setPadSlice (pad, slice);
+                        audition (pad, slice);
+                    }
+                }
                 refreshInfo();
             });
         }
@@ -1242,6 +1348,10 @@ namespace
             {
                 case Own::smpFile:     return (float) cursor.load();
                 case Own::padFollow:   return padFollow.load() ? 1.0f : 0.0f;
+                case Own::swapRehit:   return swapIgnore.load() ? 0.0f : 1.0f;
+                case Own::slTap:       return (float) slTapMode.load();
+                case Own::kitNaming:   return kitNaming.load() ? 1.0f : 0.0f;
+                case Own::kitKey:      return (float) kNumKeys;
                 case Own::smpSlice:    return smpSliceOnLoad.load() ? 1.0f : 0.0f;
                 case Own::smpAudition: return smpAudition.load() ? 1.0f : 0.0f;
                 case Own::stPos:       return (float) (proc->getBridge().seqStep.load() + 1);
@@ -1267,6 +1377,18 @@ namespace
             {
                 case Own::smpFile:     moveCursor (juce::roundToInt (v), false); return;
                 case Own::padFollow:   padFollow.store (v > 0.5f); return;
+                case Own::swapRehit:   swapIgnore.store (v < 0.5f); return;
+                case Own::slTap:       slTapMode.store (juce::jlimit (0, 3, juce::roundToInt (v))); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
+                case Own::kitNaming:
+                    if (v > 0.5f) openNaming(); else kitNaming.store (false);
+                    return;
+                case Own::kitKey:
+                {
+                    const int k = juce::roundToInt (v);
+                    if (k >= 0 && k < kNumKeys) typeName (juce::String::charToString ((juce::juce_wchar) (uint8_t) kKeyChars[k]));
+                    changed[(size_t) idx].store (true);   // back to "None": the same key types again
+                    return;
+                }
                 case Own::smpSlice:    smpSliceOnLoad.store (v > 0.5f); return;
                 case Own::smpAudition: smpAudition.store (v > 0.5f); if (v < 0.5f) stopPreview(); return;
                 case Own::stPos:       return;
@@ -1338,7 +1460,22 @@ namespace
             }
             else if (std::strcmp (key, "st_clear") == 0)       proc->getBridge().seq.clearLane (pad);
             else if (std::strcmp (key, "note_learn") == 0)     proc->getEngine().startNoteLearn (pad);
-            else if (std::strcmp (key, "kit_save") == 0)       juce::MessageManager::callAsync ([this] { saveKitHere(); });
+            else if (std::strcmp (key, "kit_save") == 0)       openNaming();
+            else if (std::strcmp (key, "kit_space") == 0)      typeName (" ");
+            else if (std::strcmp (key, "kit_bksp") == 0)       { std::lock_guard<std::mutex> g (textLock); nameEdit = nameEdit.dropLastCharacters (1); }
+            else if (std::strcmp (key, "kit_clear") == 0)      { std::lock_guard<std::mutex> g (textLock); nameEdit.clear(); }
+            else if (std::strcmp (key, "kit_cancel") == 0)     closeNaming();
+            else if (std::strcmp (key, "kit_ok") == 0)
+            {
+                juce::String name;
+                {
+                    std::lock_guard<std::mutex> g (textLock);
+                    name = nameEdit.trim();
+                }
+                if (name.isEmpty()) { setStatus ("TYPE A NAME FIRST"); return; }
+                closeNaming();
+                juce::MessageManager::callAsync ([this, name] { saveKitHere (name); });
+            }
             else if (std::strcmp (key, "kit_load") == 0)       loadKit (selectedKit(), false);
             else if (std::strcmp (key, "kit_prev") == 0)       stepKit (-1);
             else if (std::strcmp (key, "kit_next") == 0)       stepKit (1);
@@ -1434,11 +1571,16 @@ namespace
             return dirs;
         }
 
-        /** Lists a folder (or the drives) on the worker; the cursor lands on `select` when it is there. */
-        void browse (const juce::File& dir, bool root, const juce::File& select)
+        /** Lists a folder (or the drives) on the worker; the cursor lands on `select` when it is there.
+            A refresh of the drive list never overrides a move the user made meanwhile (a newer request wins),
+            and changes nothing when the drives are the same. */
+        void browse (const juce::File& dir, bool root, const juce::File& select, bool refresh = false)
         {
-            pool.addJob ([this, dir, root, select]
+            const uint32_t gen = refresh ? navGen.load() : ++navGen;
+            if (! refresh) navPending.store (true);
+            pool.addJob ([this, dir, root, select, refresh, gen]
             {
+                if (gen != navGen.load()) return;            // the user has moved on
                 auto list = root ? listRoots() : listFolder (dir);
                 auto roots = root ? list : listRoots();
                 int at = 0;
@@ -1446,11 +1588,20 @@ namespace
                     if (list[i].file == select) at = (int) i;
                 {
                     std::lock_guard<std::mutex> g (fileLock);
+                    if (gen != navGen.load()) return;
+                    if (refresh)
+                    {
+                        if (! atRoot) return;
+                        bool same = list.size() == entries.size();
+                        for (size_t i = 0; same && i < list.size(); ++i) same = list[i].file == entries[i].file;
+                        if (same) return;
+                    }
                     entries = std::move (list);
                     rootEntries = std::move (roots);
                     folder = root ? juce::File() : dir;
                     atRoot = root;
                     cursor.store (at);
+                    navPending.store (false);
                 }
                 if (! root) lastFolderFile().replaceWithText (dir.getFullPathName());
                 else        lastFolderFile().deleteFile();
@@ -1524,7 +1675,7 @@ namespace
         void refreshDrives()
         {
             const auto keep = selectedEntry().file;
-            browse ({}, true, keep);
+            browse ({}, true, keep, true);
             lastDriveScan = juce::Time::getMillisecondCounter();
         }
 
@@ -1587,6 +1738,11 @@ namespace
                     if (juce::isPositiveAndBelow (i, n)) out.rows[(size_t) r] = entries[(size_t) i].label;
                 }
                 if (n == 0) out.rows[kRows / 2] = atRoot ? "NO DRIVES FOUND" : "(NO FOLDERS OR AUDIO FILES HERE)";
+                if (navPending.load())
+                {
+                    for (auto& r : out.rows) r.clear();
+                    out.rows[kRows / 2] = "LOADING...";
+                }
 
                 // the path, from the drive's name down
                 if (atRoot) out.path = "DRIVES";
@@ -1635,19 +1791,65 @@ namespace
         }
 
         //======================================================================
-        //  SAVE KIT (message thread): the whole kit, samples inside, as "MPC Kit NNN"
+        //  Naming a kit: SAVE KIT opens a keyboard over the KIT page (kit_naming), SAVE there saves
         //======================================================================
-        void saveKitHere()
+        void openNaming()
+        {
+            juce::String loaded;
+            bool userKit = false;
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                loaded = loadedKit;
+            }
+            {
+                std::lock_guard<std::mutex> g (kitLock);
+                const int i = kitNames.indexOf (loaded);
+                userKit = i >= factoryKits;
+            }
+            // a kit of your own: its name (SAVE replaces it); otherwise the next free "MPC KIT NNN"
+            juce::String name = userKit ? loaded.toUpperCase() : juce::String();
+            if (name.isEmpty())
+            {
+                const auto dir = proc->getPresets().presetsFolder (tb::PresetManager::Type::kit);
+                for (int n = 1; n < 1000; ++n)
+                {
+                    name = "MPC KIT " + juce::String (n).paddedLeft ('0', 3);
+                    if (! dir.getChildFile (name + ".tbkit").exists()) break;
+                }
+            }
+            {
+                std::lock_guard<std::mutex> g (textLock);
+                nameEdit = name.substring (0, kNameMax);
+            }
+            kitNaming.store (true);
+            markChanged ("kit_naming");
+        }
+
+        void closeNaming()
+        {
+            kitNaming.store (false);
+            markChanged ("kit_naming");
+        }
+
+        void typeName (const juce::String& c)
+        {
+            std::lock_guard<std::mutex> g (textLock);
+            if (nameEdit.length() >= kNameMax) return;
+            if (c == " " && (nameEdit.isEmpty() || nameEdit.endsWith (" "))) return;
+            nameEdit << c;
+        }
+
+        //======================================================================
+        //  SAVE KIT (message thread): the whole kit, samples inside, under the name typed
+        //======================================================================
+        void saveKitHere (const juce::String& typed)
         {
             auto& presets = proc->getPresets();
             const auto dir = presets.presetsFolder (tb::PresetManager::Type::kit);
             dir.createDirectory();
-            juce::String name;
-            for (int n = 1; n < 1000; ++n)
-            {
-                name = "MPC Kit " + juce::String (n).paddedLeft ('0', 3);
-                if (! dir.getChildFile (name + ".tbkit").exists()) break;
-            }
+            const juce::String name = juce::File::createLegalFileName (typed).trim();
+            if (name.isEmpty()) { setStatus ("THAT NAME CAN'T BE A FILE NAME"); return; }
+            const bool replacing = dir.getChildFile (name + ".tbkit").existsAsFile();
             tb::PresetManager::Meta meta;
             meta.type = tb::PresetManager::Type::kit;
             meta.name = name;
@@ -1665,7 +1867,7 @@ namespace
                 loadedKit = name;
             }
             markChanged ("kit");
-            setStatus ("SAVED " + name.toUpperCase());
+            setStatus ((replacing ? "REPLACED " : "SAVED ") + name.toUpperCase());
         }
 
         //======================================================================
@@ -1726,6 +1928,9 @@ namespace
         std::unique_ptr<TwistedBreaksProcessor> proc;
         juce::File dataRoot;
         std::vector<juce::RangedAudioParameter*> globalPtr, padPtr, groupPtr;
+        std::array<std::atomic<float>*, tb::kNumPads> swapRaw {};
+        std::array<bool, 128> droppedNote {};          // audio thread only
+        std::atomic<bool> swapIgnore { true };
 
         juce::AudioBuffer<float> buffer;
         juce::MidiBuffer midi;
@@ -1746,6 +1951,12 @@ namespace
 
         mutable std::mutex kitLock, textLock;
         juce::StringArray kitNames;
+        int factoryKits = 0;
+        juce::String lastPresetStatus;               // textLock
+        bool statusFromPresets = false;              // textLock
+        juce::String nameEdit;                       // the name being typed (textLock)
+        std::atomic<bool> kitNaming { false };
+        std::atomic<int>  slTapMode { 0 };
         juce::Array<juce::File> kitFiles;
         juce::String status { "READY" }, loadedKit;
 
@@ -1765,7 +1976,8 @@ namespace
         bool atRoot = true;
         std::atomic<int>  cursor { 0 };
         std::atomic<bool> smpSliceOnLoad { true }, smpAudition { true };
-        std::atomic<uint32_t> previewGen { 0 }, previewDue { 0 };
+        std::atomic<uint32_t> previewGen { 0 }, previewDue { 0 }, navGen { 0 };
+        std::atomic<bool> navPending { false };
         juce::AudioFormatManager formats;
         std::array<std::atomic<bool>, tb::kNumPads> sliceWhenLoaded {};
         juce::ThreadPool pool { 1 };

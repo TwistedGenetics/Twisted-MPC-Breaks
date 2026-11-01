@@ -28,16 +28,16 @@ the Q-Links drive it.
 
 | Page | What's on it |
 |---|---|
-| KIT | Kit knob (one click = one kit, wraps round), ◀ PREV / NEXT ▶ (load straight away), LOAD KIT, SAVE KIT, what's playing; status; **what shapes the sound** (pads following the MPC tempo, FX, macros, character, limiter); master level, limiter, scene A/B, crossfader |
+| KIT | Kit knob (one click = one kit, wraps round), ◀ PREV / NEXT ▶ (load straight away), LOAD KIT, SAVE KIT (opens a keyboard to name it; the same name replaces it), what's playing; status; **what shapes the sound** (pads following the MPC tempo, FX, macros, character, limiter); master level, limiter, scene A/B, crossfader |
 | PAD | The selected pad: gain, pitch, pan, start/end, velocity, mode, stretch, **tempo sync**, character, slice, reverse, choke, SWAP, group, and a line saying how it plays (e.g. "LOOP · FOLLOWS MPC TEMPO: 170 -> 120 BPM, REPITCH") |
 | SAMPLES | A browser of the MPC's own drives (internal drive, SD card, USB): turn SAMPLE or tap a row, tap the lit row (or OPEN) to go into a folder, BACK to come out; AUDITION plays each file as you land on it; LOAD puts it on the selected pad (sliced if SLICE ON LOAD is lit). It remembers the last folder. |
-| SLICE | The Mac app's green CRT: the selected pad's waveform with numbered slice markers, the selected slice lit, the playhead. Tap the wave to pick and hear a slice; SLICE / MOVE knobs pick a slice and shift its marker; ADD splits it, DELETE merges it, ZOOM shows just that slice; AUTO SLICE (SENS, COUNT), EQUAL, RESET, UNSLICE, SPREAD, PLAY |
+| SLICE | The Mac app's green CRT: the selected pad's waveform with numbered slice markers, the selected slice lit, the playhead. FINGER ON THE WAVE: PICK (tap picks and plays a slice), MOVE (the nearest marker jumps to your finger), ADD (a marker where you tap), DEL (the nearest marker goes); SLICE / MOVE knobs pick a slice and shift its marker; ADD splits it, DELETE merges it, ZOOM shows just that slice; AUTO SLICE (SENS, COUNT), EQUAL, RESET, UNSLICE, SPREAD, PLAY |
 | STEPS | The selected pad's 32 steps as lamp keys, with a running playhead; length, step size, run, CLEAR |
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |
 | MIXER | Group A–D levels and mutes |
-| SETUP | FOLLOW HITS (a hit selects its pad); which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
+| SETUP | FOLLOW HITS (a hit selects its pad); hitting a playing SWAP pad again: IGNORE (default) or STOP; which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
 
 (The MPC shows five page tabs at a time; the `>` tab pages to the rest.)
 
@@ -53,6 +53,10 @@ the Q-Links drive it.
 ### More
 - **The pad you hit is the pad you edit**: hitting a pad selects it, so PAD, SLICE, STEPS and SAMPLES all switch to
   it (the sequencer playing doesn't move the selection). Turn it off with FOLLOW HITS on the SETUP page.
+- **SWAP groups**: with the MPC playing, hitting the pad that is playing again does nothing (IGNORE); a hit while
+  a hand-off to another pad is waiting cancels the hand-off. With the MPC stopped, loops play only while held.
+- **Moving a marker with your finger**: the MPC's screen sends a drag as small nudges, not a position, so markers
+  are placed by tapping: choose MOVE, tap where it should go (ZOOM first for millisecond accuracy).
 - **Which control am I on?** The control you touch gets an amber frame; the data wheel then turns that one.
 - **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Why does pad 01 sound slowed down / pitched?** The factory kit's break is a 170 BPM loop with TEMPO SYNC on,
@@ -88,7 +92,7 @@ GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.2)
+## Known limits (1.3)
 - Untested on hardware: CPU load, how smoothly the MPC redraws the slice screen and the STEPS playhead, and the
   skin's readability need a device check.
 - A project remembers where each pad's sample lives (a drive, a folder): keep the card or stick in, or SAVE KIT

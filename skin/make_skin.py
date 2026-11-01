@@ -234,9 +234,16 @@ class Tab:
         self.qlinks = qlinks
         self.seed = seed
         self.controls = []
+        self.when = None          # added to every control from now on (MPC shows it only then)
+        self.overlays = []        # (art file, when): full-page pictures over the background
         self.hi = enamel(W * SS, H * SS, seed, base=STEEL_DARK, grime=0.6).convert("RGBA")
         self.draw = ImageDraw.Draw(self.hi)
         self.header()
+
+    def add(self, c):
+        if self.when and "when" not in c:
+            c["when"] = self.when
+        self.controls.append(c)
 
     # ---- primitives (layout px in, 2x px out) ---------------------------------------------------
     def text(self, x, y, s, size=15, bold=True, fill=INK, anchor="mm", spacing=0.0, shadow=True):
@@ -377,7 +384,7 @@ class Tab:
         if value:
             self.vfd_window(cx, cy + r + 2 + 16, bw - 8, 30)
         soft_shadow(self.hi, ((cx - r) * SS, (cy - r) * SS, (cx + r) * SS, (cy + r) * SS), r * SS, 5 * SS, 200, off=(3, 6), ellipse=True)
-        self.controls.append(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=bw, value=value, n=FRAMES))
+        self.add(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=bw, value=value, n=FRAMES))
 
     def selector(self, key, cx, cy, r, labels, name):
         """A rotary switch: its positions engraved round it, the name below."""
@@ -405,18 +412,18 @@ class Tab:
             d.text((tx * SS, ty * SS), lab, font=f, fill=INK, anchor=anchor)
         self.caption(cx, cy + r + 26, name)
         soft_shadow(self.hi, ((cx - r) * SS, (cy - r) * SS, (cx + r) * SS, (cy + r) * SS), r * SS, 5 * SS, 200, off=(3, 6), ellipse=True)
-        self.controls.append(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=2 * r + 10, value=False, n=n,
+        self.add(dict(kind="knob", key=key, cx=cx, cy=cy, r=r, bw=2 * r + 10, value=False, n=n,
                                   degs=[-120 + 240 * i / (n - 1) for i in range(n)], pointer=True))
 
     def toggle(self, key, cx, cy, label, w=118, h=58, name=None, label_size=17):
         if name:
             self.caption(cx, cy - h / 2 - 16, name)
-        self.controls.append(dict(kind="pair", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
+        self.add(dict(kind="pair", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
 
     def button(self, key, cx, cy, label, w=150, h=58, name=None, label_size=17):
         if name:
             self.caption(cx, cy - h / 2 - 16, name)
-        self.controls.append(dict(kind="button", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
+        self.add(dict(kind="button", key=key, cx=cx, cy=cy, w=w, h=h, label=label, label_size=label_size))
 
     def keys(self, key, cx, cy, labels, sw, sh, name=None, rows=1, label_size=16):
         """A bank of lamp keys, one lit: one picture an option under clear segments (the toolkit's enum_h)."""
@@ -424,7 +431,7 @@ class Tab:
         if name:
             top = min(r[1] for r in rects)
             self.caption(cx, top - 16, name)
-        self.controls.append(dict(kind="keys", key=key, cx=cx, cy=cy, labels=labels, sw=sw, sh=sh, rows=rows,
+        self.add(dict(kind="keys", key=key, cx=cx, cy=cy, labels=labels, sw=sw, sh=sh, rows=rows,
                                   rects=rects, label_size=label_size))
 
     def readout(self, key, cx, cy, w, h, tsize=24, name=None, tcolor=VFD_HEX, talign="center", window=True):
@@ -432,15 +439,15 @@ class Tab:
             self.caption(cx, cy - h / 2 - 16, name)
         if window:
             self.vfd_window(cx, cy, w, h)
-        self.controls.append(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize, tcolor=tcolor, talign=talign))
+        self.add(dict(kind="readout", key=key, cx=cx, cy=cy, w=w, h=h, tsize=tsize, tcolor=tcolor, talign=talign))
 
     def hit(self, key, cx, cy, w, h):
         """An invisible touch area firing a trigger (a browser row)."""
-        self.controls.append(dict(kind="hit", key=key, cx=cx, cy=cy, w=w, h=h))
+        self.add(dict(kind="hit", key=key, cx=cx, cy=cy, w=w, h=h))
 
     def column(self, key, cx, cy, w, h, strip_name, frames):
         """A display filmstrip shared by many columns (the slice screen): frames drawn once, by strip_name."""
-        self.controls.append(dict(kind="column", key=key, cx=cx, cy=cy, w=w, h=h, strip=strip_name, frames=frames))
+        self.add(dict(kind="column", key=key, cx=cx, cy=cy, w=w, h=h, strip=strip_name, frames=frames))
 
     def lamp_row(self, key, cx, cy, n, pitch, first, count):
         """A row of small amber lamps, one lit by a parameter (0 = none): steps first .. first + count - 1
@@ -451,7 +458,7 @@ class Tab:
             x = x0 + i * pitch
             d.ellipse(((x - 5) * SS, (cy - 5) * SS, (x + 5) * SS, (cy + 5) * SS), fill=(12, 10, 8))
             d.ellipse(((x - 4) * SS, (cy - 4) * SS, (x + 4) * SS, (cy + 4) * SS), fill=AMBER_DIM)
-        self.controls.append(dict(kind="meter", key=key, cx=cx, cy=cy, w=int(pitch * count), h=22, n=n, pitch=pitch,
+        self.add(dict(kind="meter", key=key, cx=cx, cy=cy, w=int(pitch * count), h=22, n=n, pitch=pitch,
                                   first=first, count=count))
 
     def tag(self, cx, cy, lines, w, h, angle=-2.0):
@@ -624,7 +631,47 @@ def render(tab, out):
     out.lines.append("")
     out.lines.append("[tab %s]" % tab.name)
     out.lines.append("art file=art/tab_%s.png fit=stretch" % slug)
+    for name, when in tab.overlays:
+        out.lines.append("art file=art/%s.png x=0 y=%d w=%d h=%d fit=stretch when=%s" % (name, Y_OFF, W, H, when))
     for c in tab.controls:
+        n0 = len(out.lines)
+        hidden = c.get("when", "").endswith(":1")   # shown only in a state the preview isn't in
+        render_control(tab, c, out, slug, prev if not hidden else prev.copy())
+        if c.get("when"):
+            assert c["kind"] != "keys", "keys are pictures: they can't have when= (use a toggle)"
+            for i in range(n0, len(out.lines)):
+                out.lines[i] += " when=" + c["when"]
+    for title, keys in tab.qlinks:
+        out.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
+    bg.save(os.path.join(ART, "tab_" + slug + ".png"), optimize=True)   # tab_: never a control's name
+    if tab.name == "SLICE":
+        demo_wave(prev, out)
+    prev.convert("RGB").save(os.path.join(PREVIEW, slug + ".png"))
+    for name, when in tab.overlays:
+        ov = OVERLAY_TABS[name]
+        ovprev = final(ov.hi, W, H).convert("RGBA")
+        for c in ov.controls:
+            render_control(ov, c, None, slug, ovprev)
+        ovprev.convert("RGB").save(os.path.join(PREVIEW, slug + "_" + name + ".png"))
+    return bg
+
+
+OVERLAY_TABS = {}
+
+
+def render_control(tab, c, out, slug, prev):
+    """One control: its pictures into vst/art, its layout line(s) into out (None: the preview only)."""
+    class _Sink:
+        def __init__(self):
+            self.lines = []
+            self.strips = {}
+
+        def save(self, im, name):
+            pass
+    if out is None:
+        out = _Sink()
+    tab = c.get("src", tab)   # a control on an overlay is cut from the overlay's drawing
+    if True:
         k, key = c["kind"], c["key"]
         if k == "knob":
             r = c["r"]
@@ -706,8 +753,16 @@ def render(tab, out):
                              (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, c["tsize"], c["tcolor"], c["talign"]))
         elif k == "taps":
             opts = ",".join([" "] * c["n"])
-            out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d img=art/clear.png img_on=art/clear.png' %
-                             (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"]))
+            on = "clear.png"
+            if c.get("flash"):   # a lit frame while the key is down (the engine puts it back on None)
+                on = "flash_%dx%d.png" % (c["sw"], c["sh"])
+                fl = Image.new("RGBA", (c["sw"] * SS, c["sh"] * SS), (0, 0, 0, 0))
+                ImageDraw.Draw(fl).rounded_rectangle((SS, SS, c["sw"] * SS - SS, c["sh"] * SS - SS), radius=5 * SS,
+                                                     outline=AMBER + (255,), width=3 * SS, fill=AMBER + (60,))
+                out.save(fl.resize((c["sw"], c["sh"]), Image.LANCZOS), on)
+            rows = " rows=%d" % c["rows"] if c.get("rows", 1) > 1 else ""
+            out.lines.append('enum_h cx=%d cy=%d label="" key=%s options="%s" sw=%d sh=%d%s img=art/clear.png img_on=art/%s' %
+                             (c["cx"], c["cy"] + Y_OFF, key, opts, c["sw"], c["sh"], rows, on))
         elif k == "hit":
             out.lines.append('button cx=%d cy=%d label="" key=%s img=art/clear.png img_on=art/clear.png w=%d h=%d ns=0' %
                              (c["cx"], c["cy"] + Y_OFF, key, c["w"], c["h"]))
@@ -724,22 +779,50 @@ def render(tab, out):
             prev.paste(frames[0], (int(c["cx"] - c["w"] / 2), int(c["cy"] - c["h"] / 2)))
             out.lines.append('meter cx=%d cy=%d w=%d h=%d key=%s strip=art/%s.png frames=%d' %
                              (c["cx"], c["cy"] + Y_OFF, c["w"], c["h"], key, name, len(frames)))
-    for title, keys in tab.qlinks:
-        out.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
-    bg.save(os.path.join(ART, "tab_" + slug + ".png"), optimize=True)   # tab_: never a control's name
-    if tab.name == "SLICE":
-        demo_wave(prev, out)
-    prev.convert("RGB").save(os.path.join(PREVIEW, slug + ".png"))
-    return bg
 
 
 # =================================================================================================
 #  The tabs
 # =================================================================================================
+KEY_CHARS = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()"   # tools/make_params.py
+KB_SW, KB_SH, KB_CY0 = 100, 66, 236
+
+
+def kit_naming_overlay(kit):
+    """SAVE KIT's keyboard: a full-page picture shown over the KIT page while kit_naming is On, and its controls."""
+    o = Tab("KIT", [], 1212)
+    o.panel(14, 64, 1252, 550, "SAVE KIT AS")
+    o.readout("kit_name", 640, 146, 940, 64, tsize=36, name="TYPE A NAME", talign="left")
+    n = len(KEY_CHARS) + 1
+    rects = seg_rects(640, KB_CY0, n, KB_SW, KB_SH, rows=4)
+    for i, ch in enumerate(KEY_CHARS):
+        rx, ry, rw, rh = rects[i]
+        o.hi.alpha_composite(lamp_key(rw * SS, rh * SS, ch, False, size=26), (int(rx * SS), int(ry * SS)))
+    for c in [dict(kind="taps", key="kit_key", cx=640, cy=KB_CY0, n=n, sw=KB_SW, sh=KB_SH, rows=4, flash=True)]:
+        o.add(c)
+    o.button("kit_space", 330, 548, "SPACE", w=320, h=66, label_size=20)
+    o.button("kit_bksp", 572, 548, "◀ DEL", w=140, h=66)
+    o.button("kit_clear", 724, 548, "CLEAR", w=140, h=66)
+    o.button("kit_cancel", 900, 548, "CANCEL", w=180, h=66)
+    o.button("kit_ok", 1112, 548, "SAVE", w=220, h=66, label_size=26)
+    name = "kit_naming_overlay"
+    o.hi_final = final(o.hi, W, H)
+    o.hi_final.save(os.path.join(ART, name + ".png"), optimize=True)
+    OVERLAY_TABS[name] = o
+    kit.overlays.append((name, "kit_naming:1"))
+    for c in o.controls:   # the KIT page owns them (its layout lines), drawn from the overlay
+        c = dict(c, src=o, when="kit_naming:1")
+        kit.controls.append(c)
+
+
 def tab_kit():
     t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_prev", "kit_next", "kit_save", "master_gain", "master_limiter", "scene_view",
                              "xfade", "xfade_curve"])], 101)
     t.panel(14, 64, 760, 270, "KIT SELECT")
+    t.panel(14, 344, 760, 270, "STATUS")
+    t.panel(786, 64, 480, 270, "MASTER")
+    t.panel(786, 344, 480, 270, "SCENES")
+    t.when = "kit_naming:0"   # all of it hides while the naming keyboard is up
     t.knob("kit", 92, 196, 42, "KIT", bw=112, value=False)
     t.readout("kit", 462, 150, 560, 56, tsize=30, name="SELECTED KIT")
     t.readout("kit_info", 462, 208, 600, 34, tsize=18)
@@ -747,18 +830,17 @@ def tab_kit():
     t.button("kit_load", 384, 284, "LOAD KIT", w=160, h=56)
     t.button("kit_next", 536, 284, "NEXT ▶", w=130, h=56)
     t.button("kit_save", 690, 284, "SAVE KIT", w=140, h=56)
-    t.panel(14, 344, 760, 270, "STATUS")
     t.readout("status", 394, 412, 700, 48, tsize=22, name="PLANT STATUS")
     t.caption(394, 476, "WHAT SHAPES THE SOUND")
     t.readout("snd_info1", 394, 516, 720, 40, tsize=18)
     t.readout("snd_info2", 394, 566, 720, 40, tsize=18)
-    t.panel(786, 64, 480, 270, "MASTER")
     t.knob("master_gain", 900, 196, 42, "LEVEL", bw=120)
     t.toggle("master_limiter", 1120, 196, "LIMITER", w=150, h=62)
-    t.panel(786, 344, 480, 270, "SCENES")
-    t.keys("scene_view", 880, 440, ["A", "B"], 60, 56, name="PADS")
+    t.toggle("scene_view", 880, 446, "SCENE\nB", w=120, h=76, name="PADS A / B")
     t.knob("xfade", 1120, 450, 42, "CROSSFADER", bw=120)
-    t.keys("xfade_curve", 880, 555, ["SMOOTH", "SHARP"], 92, 44, name="CURVE", label_size=14)
+    t.toggle("xfade_curve", 880, 566, "SHARP", w=120, h=50, name="CURVE")
+    t.when = None
+    kit_naming_overlay(t)
     return t
 
 
@@ -918,7 +1000,7 @@ def demo_wave(prev, out):
 
 def tab_slice():
     keys = ["pad", "sl_pick", "sl_pos", "sl_sens", "sl_count", "sl_add", "sl_del", "sl_zoom",
-            "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread", "sl_play"]
+            "sl_auto", "sl_equal", "sl_reset", "sl_unslice", "sl_spread", "sl_play", "sl_tap"]
     t = Tab("SLICE", [("SLICE", keys)], 707)
     crt_screen(t)
     green = "8dff6a"
@@ -931,7 +1013,7 @@ def tab_slice():
     # touch: one invisible key per column, plus "None" (where the engine parks it) off the trace's right end
     n = WAVE_COLS + 1
     sw = COL_W - 2
-    t.controls.append(dict(kind="taps", key="wv_tap", cx=WAVE_X0 + 1 + (n * sw + (n - 1) * 2) // 2, cy=TAB_CY - TAB_H // 2 + (TAB_H + WAVE_H) // 2,
+    t.add(dict(kind="taps", key="wv_tap", cx=WAVE_X0 + 1 + (n * sw + (n - 1) * 2) // 2, cy=TAB_CY - TAB_H // 2 + (TAB_H + WAVE_H) // 2,
                            n=n, sw=sw, sh=TAB_H + WAVE_H))
 
     t.panel(14, 356, 1252, 258, "SLICER")
@@ -949,7 +1031,7 @@ def tab_slice():
     t.button("sl_reset", 520, 576, "RESET", w=160, h=60)
     t.button("sl_unslice", 696, 576, "UNSLICE", w=160, h=60)
     t.button("sl_spread", 876, 576, "SPREAD", w=170, h=60)
-    t.tag(1120, 576, ["TAP THE WAVE: PICK + HEAR A SLICE", "MOVE: SHIFT ITS MARKER", "ADD SPLITS IT, DELETE MERGES IT"], 250, 62)
+    t.keys("sl_tap", 1126, 584, ["PICK", "MOVE", "ADD", "DEL"], 60, 50, name="FINGER ON THE WAVE", label_size=14)
     return t
 
 
@@ -1018,15 +1100,16 @@ def tab_steps():
 
 
 def tab_setup():
-    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn", "pad_follow"])], 1010)
+    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn", "pad_follow", "swap_rehit"])], 1010)
     t.panel(14, 64, 1252, 270, "PAD NOTES")
     t.knob("pad", 104, 196, 40, "PAD", value=False)
     t.keys("note_base", 540, 206, ["36-51\nC1", "37-52\nMPC", "48-63\nC2", "CUSTOM"], 150, 84, name="WHICH NOTES PLAY PADS 1-16")
     t.button("note_learn", 1060, 206, "LEARN\nPAD NOTE", w=230, h=90, name="SELECTED PAD")
     t.panel(14, 344, 1252, 270, "MIDI IN")
     t.readout("note_info", 640, 430, 1100, 64, tsize=30)
-    t.tag(560, 548, ["HIT A PAD ON THE MPC: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
-                     "WRONG PAD? TRY THE OTHER NOTE LAYOUTS, OR PICK A PAD AND PRESS LEARN, THEN HIT IT."], 780, 56)
+    t.tag(330, 548, ["HIT A PAD: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
+                     "WRONG PAD? TRY ANOTHER LAYOUT, OR PICK A PAD, PRESS LEARN, HIT IT."], 590, 56)
+    t.keys("swap_rehit", 860, 560, ["IGNORE", "STOP"], 110, 56, name="HIT A PLAYING SWAP PAD AGAIN", label_size=15)
     t.toggle("pad_follow", 1140, 548, "FOLLOW\nHITS", w=180, h=76, name="PAD SELECT")
     return t
 

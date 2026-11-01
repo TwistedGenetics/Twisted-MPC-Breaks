@@ -300,6 +300,27 @@ int main(void) {
     display(a, "sl_foot", text);
     CHECK(strstr(text, "ZOOM") != NULL, "ZOOM shows the selected slice ('%s')", text);
     set_plain(a, "sl_zoom", 0); run(a, 2);
+    /* finger modes: MOVE brings the nearest marker to the tap, ADD puts one there, DELETE takes the nearest away */
+    set_plain(a, "sl_tap", 1); run(a, 2);
+    set_plain(a, "wv_tap", 41); run(a, 2); settle(a, 300);
+    int at41 = 0, at40 = 0;
+    for (int c = 1; c <= 64; c++) { char k[8]; snprintf(k, sizeof k, "wt_%02d", c); int tv = (int)lroundf(plain(a, k));
+        if (c == 42 && tv > 0) at41 = tv; if (c == 41 && tv > 0) at40 = tv; }
+    display(a, "sl_foot", text);
+    printf("     MOVE tap on column 42: tab there %d ('%s')\n", at41, text);
+    CHECK(at41 > 16, "MOVE: the nearest marker is now under the finger, selected (tab %d)", at41);
+    CHECK(strncmp(text, "MOVE:", 5) == 0, "the bottom line says what a tap does");
+    display(a, "sl_foot", text2); sscanf(strstr(text2, "OF ") + 3, "%d", &count0);
+    set_plain(a, "sl_tap", 2); run(a, 2);
+    set_plain(a, "wv_tap", 3); run(a, 2); settle(a, 300);
+    display(a, "sl_foot", text); count1 = 0; if (strstr(text, "OF ")) sscanf(strstr(text, "OF ") + 3, "%d", &count1);
+    CHECK(count1 == count0 + 1 || count0 == 16, "ADD: a tap puts a marker there (%d -> %d)", count0, count1);
+    set_plain(a, "sl_tap", 3); run(a, 2);
+    set_plain(a, "wv_tap", 3); run(a, 2); settle(a, 300);
+    display(a, "sl_foot", text); if (strstr(text, "OF ")) sscanf(strstr(text, "OF ") + 3, "%d", &count1);
+    CHECK(count1 == count0, "DELETE: a tap takes the nearest one away (%d)", count1);
+    (void)at40;
+    set_plain(a, "sl_tap", 0); run(a, 2);
     peak = 0; a->setP(a, idx("sl_play"), 1); run(a, 2); a->setP(a, idx("sl_play"), 0); settle(a, 200);
     CHECK(peak > 0.01, "PLAY SLICE plays it (peak %.3f)", peak);
 
@@ -329,13 +350,62 @@ int main(void) {
     CHECK(strstr(text, "OWN SPEED") != NULL, "TEMPO SYNC off: '%s'", text);
     set_plain(a, "sp_sync", 1); run(a, 2);
 
-    /* 2f. SAVE KIT: a new kit in the list, and it loads */
-    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0);
-    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "SAVED")) break; }
-    printf("     after SAVE KIT: '%s'\n", text);
-    CHECK(strstr(text, "SAVED MPC KIT") != NULL, "SAVE KIT reports it ('%s')", text);
+    /* 2f. SAVE KIT opens the naming keyboard; type a name, SAVE; the same name again replaces it */
+    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0); settle(a, 200);
+    CHECK(plain(a, "kit_naming") > 0.5f, "SAVE KIT opens the keyboard");
+    display(a, "kit_name", text);
+    printf("     name offered: '%s'\n", text);
+    CHECK(strstr(text, "MPC KIT") != NULL, "it offers a name ('%s')", text);
+    a->setP(a, idx("kit_clear"), 1); run(a, 2); a->setP(a, idx("kit_clear"), 0);
+    const char *keys = "1234567890-QWERTYUIOP+ASDFGHJKL&!ZXCVBNM.()";
+    for (const char *c = "JUNGLE 11"; *c; c++) {
+        if (*c == ' ') { a->setP(a, idx("kit_space"), 1); run(a, 2); a->setP(a, idx("kit_space"), 0); run(a, 2); continue; }
+        set_plain(a, "kit_key", (float)(strchr(keys, *c) - keys)); run(a, 10);   /* back to None between keys */
+    }
+    a->setP(a, idx("kit_bksp"), 1); run(a, 2); a->setP(a, idx("kit_bksp"), 0); settle(a, 200);
+    display(a, "kit_name", text);
+    CHECK(strcmp(text, "JUNGLE 1_") == 0, "typed 'JUNGLE 11', one DEL: '%s'", text);
+    CHECK(lroundf(plain(a, "kit_key")) == 43, "the key goes back to None, so a letter can repeat (LL)");
+    a->setP(a, idx("kit_ok"), 1); run(a, 4); a->setP(a, idx("kit_ok"), 0);
+    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "ED JUNGLE 1")) break; }
+    printf("     after SAVE: '%s'\n", text);
+    CHECK(strstr(text, "SAVED JUNGLE 1") != NULL || strstr(text, "REPLACED JUNGLE 1") != NULL, "saved under its name ('%s')", text);
+    CHECK(plain(a, "kit_naming") < 0.5f, "and the keyboard closes");
     display(a, "kit", text2);
-    CHECK(strstr(text2, "MPC Kit") != NULL, "KIT selector shows the saved kit ('%s')", text2);
+    CHECK(strcmp(text2, "JUNGLE 1") == 0, "KIT selector shows it ('%s')", text2);
+    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0); settle(a, 200);
+    display(a, "kit_name", text);
+    CHECK(strcmp(text, "JUNGLE 1_") == 0, "saving again offers the kit's own name ('%s')", text);
+    a->setP(a, idx("kit_ok"), 1); run(a, 4); a->setP(a, idx("kit_ok"), 0);
+    for (int i = 0; i < 300; i++) { run(a, 4); usleep(20000); display(a, "status", text); if (strstr(text, "REPLACED")) break; }
+    CHECK(strstr(text, "REPLACED JUNGLE 1") != NULL, "and replaces it ('%s')", text);
+    a->setP(a, idx("kit_save"), 1); run(a, 4); a->setP(a, idx("kit_save"), 0); run(a, 4);
+    a->setP(a, idx("kit_cancel"), 1); run(a, 4); a->setP(a, idx("kit_cancel"), 0); run(a, 4);
+    CHECK(plain(a, "kit_naming") < 0.5f, "CANCEL closes it without saving");
+
+    /* 2g. SWAP RE-HIT: pad 5 (made a loop) in SWAP group 1, the MPC playing (stopped, loops only play while held);
+     * a second hit is ignored, with STOP it stops it */
+    set_plain(a, "seq_run", 0);
+    ti.ppq = 0; ti.samplePos = 0; ti.flags = (1 << 10) | (1 << 9) | (1 << 1);
+    set_plain(a, "pad", 5); set_plain(a, "sp_group", 1); set_plain(a, "grp_a_mute", 1); run(a, 4);   /* hear pad 5 alone */
+    a->setP(a, idx("st_clear"), 1); run(a, 4); a->setP(a, idx("st_clear"), 0); run(a, 4);       /* (no steps of its own) */
+    peak = 0; run(a, 300);
+    printf("     MPC playing, only group B (pad 5) heard, nothing hit: peak %.3f\n", peak);
+    CHECK(peak < 0.01, "silent before the hit (peak %.3f)", peak);
+    set_plain(a, "sp_mode", 1); set_plain(a, "sp_swap", 1); set_plain(a, "sp_swapq", 0); run(a, 4);
+    note(a, 1, 40, 110); peak = 0; run(a, 20); note(a, 0, 40, 0); run(a, 100);
+    printf("     swap loop first hit: peak %.3f\n", peak);
+    note(a, 1, 40, 110); run(a, 4); note(a, 0, 40, 0);
+    run(a, 400);                                   /* well past the next swap point (a slice) */
+    peak = 0; run(a, 100);
+    CHECK(peak > 0.01, "IGNORE: hitting the playing swap loop again leaves it playing (peak %.3f)", peak);
+    set_plain(a, "swap_rehit", 1); run(a, 2);
+    note(a, 1, 40, 110); run(a, 4); note(a, 0, 40, 0);
+    run(a, 600);
+    peak = 0; run(a, 100);
+    CHECK(peak < 0.01, "STOP: the same hit stops it at the next swap point (peak %.4f)", peak);
+    set_plain(a, "swap_rehit", 0); set_plain(a, "sp_swap", 0); set_plain(a, "sp_mode", 0); set_plain(a, "sp_group", 0); set_plain(a, "grp_a_mute", 0); run(a, 2);
+    ti.flags = (1 << 10) | (1 << 9); run(a, 40);
 
     /* 3. the kit's pattern from MPC's transport */
     set_plain(a, "seq_run", 1);
