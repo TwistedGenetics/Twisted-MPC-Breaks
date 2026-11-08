@@ -1,0 +1,76 @@
+name: Toolchain (MPC G1, MPC OS 3.10)
+
+# Builds the cross compiler + sysroot that match MPC OS 3.10 on G1 MPCs from inMusic's open source release
+# (toolchain/az01-g1-3.10.lock, toolchain/build.sh) and publishes it as a release the plugin build downloads.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - toolchain/**
+      - .github/workflows/toolchain.yml
+
+permissions:
+  contents: write
+
+env:
+  TOOLCHAIN_TAG: toolchain-az01-g1-3.10
+
+jobs:
+  toolchain:
+    name: arm-az01-linux-gnueabihf (GCC 13.4, glibc 2.39)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex texinfo gawk python3 rsync file \
+            libgmp-dev libmpfr-dev libmpc-dev libisl-dev qemu-user
+
+      - name: Sources (sha256-checked against the lock)
+        run: tools/ci_run.sh Fetch toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" fetch
+
+      - name: binutils 2.42
+        run: tools/ci_run.sh binutils toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" binutils
+
+      - name: Linux 6.6 headers
+        run: tools/ci_run.sh headers toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" headers
+
+      - name: GCC 13.4 stage 1
+        run: tools/ci_run.sh gcc1 toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" gcc1
+
+      - name: glibc 2.39
+        run: tools/ci_run.sh glibc toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" glibc
+
+      - name: GCC 13.4 final (C, C++)
+        run: tools/ci_run.sh gcc2 toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" gcc2
+
+      - name: alsa-lib 1.2.11
+        run: tools/ci_run.sh alsa toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" alsa
+
+      - name: Check (hard float, glibc 2.39, runs under qemu-arm)
+        run: |
+          toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" check 2>&1 | tee check.txt
+          echo "::notice title=Toolchain::$(grep -E '^hello|arm-az01' check.txt | tr '\n' ' ')"
+
+      - name: Package
+        run: toolchain/build.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/az01-g1-3.10" package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: az01-g1-3.10-toolchain
+          path: ${{ runner.temp }}/work/az01-g1-3.10-toolchain-x86_64.tar.xz*
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          W="$RUNNER_TEMP/work"
+          if ! gh release view "$TOOLCHAIN_TAG" >/dev/null 2>&1; then
+            gh release create "$TOOLCHAIN_TAG" --latest=false --title "Toolchain: MPC G1, MPC OS 3.10 (GCC 13.4, glibc 2.39)" \
+              --notes "arm-az01-linux-gnueabihf, built from inMusic's open source release (inmusic-software/az0x-open-source, mpc-g1/3.10) by toolchain/build.sh. See az01-g1-3.10.lock inside."
+          fi
+          gh release upload "$TOOLCHAIN_TAG" "$W/az01-g1-3.10-toolchain-x86_64.tar.xz" "$W/az01-g1-3.10-toolchain-x86_64.tar.xz.sha256" --clobber

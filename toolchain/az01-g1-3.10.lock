@@ -1,0 +1,26 @@
+# The MPC G1 (az01: MPC One / One+, Live / Live II, X / X SE, Key 37 / 61, Force) software stack of MPC OS 3.10,
+# from inMusic's open source release: https://github.com/inmusic-software/az0x-open-source/tree/mpc-g1/3.10
+# (branch mpc-g1/3.10 at ea21ffce863f48cfa138f053bfd5788daa752a6b, published 2026-11-06).
+#
+# The release is a Yocto (poky) build; its archives are Git LFS objects, fetched from
+#   https://media.githubusercontent.com/media/inmusic-software/az0x-open-source/<RELEASE_REF>/<path>
+# and checked against the sha256 Git LFS records for them. binutils is not in the release (it isn't
+# shipped on the device): Yocto scarthgap's version, from GNU.
+#
+# name  sha256  path-or-url
+RELEASE_REF=ea21ffce863f48cfa138f053bfd5788daa752a6b
+
+glibc     49c552588ba23d4c0206e7e9e759379a214c721f48e37795ebd50fb959bf0b24  arm-poky-linux-gnueabi/glibc-2.39+git-r0/glibc-2.39+git-r0-patched.tar.xz
+gcc       4e0b3d8ee7867a1df54300e13c0757c6123d87f81fcb5e6f453ea0c33021ea5e  allarch/gcc-source-13.4.0-13.4.0-r0/gcc-source-13.4.0-13.4.0-r0-patched.tar.xz
+headers   57e5fb143aef8725c6dd5e7318486bd04a282f3a775e440faacb26cc29427e79  arm-poky-linux-gnueabi/linux-libc-headers-6.6-r0/linux-libc-headers-6.6-r0-patched.tar.xz
+alsa      549e4467f8ac6ec800285be9bd43f5033726019a7276e338be968b73898b73da  arm-poky-linux-gnueabi/alsa-lib-1.2.11-r0/alsa-lib-1.2.11-r0-patched.tar.xz
+kernel    be712eccd9fc33251d2c0682ee0e9ca7ba64752550a1387155f788c2ac45d7bd  arm-poky-linux-gnueabi/linux-az01-6.18.44+git-r0/linux-az01-6.18.44+git-r0-patched.tar.xz
+binutils  f6e4d41fd5fc778b06b7891457b3620da5ecea1006c6a4a41ae998109f85a800  https://ftp.gnu.org/gnu/binutils/binutils-2.42.tar.xz
+
+# What the device runs (for the record; the build checks the sources say the same):
+#   kernel  6.18.44 (linux-az01, az01_defconfig: PREEMPT_RT, ARCH_ROCKCHIP, VFP + NEON), RK3288 (4x Cortex-A17)
+#   glibc   2.39, sourceware release/2.39/master at ce65d944e38a20cb70af2a48a4b8aa5d8fabe1cc + Yocto patches
+#   kernel headers glibc was built against: 6.6
+#   gcc     13.4.0 (+ Yocto patches); libstdc++.so.6 on the device is this one
+#   ABI     EABI, hard float (/lib/ld-linux-armhf.so.3); Yocto names the triplet arm-poky-linux-gnueabi
+#   MPC One = board ACVA (arch/arm/boot/dts/rockchip/rk3288-az01-acva.dts)
