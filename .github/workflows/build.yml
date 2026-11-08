@@ -9,8 +9,9 @@ permissions:
   contents: write   # lets a build of main publish a GitHub Release
 
 env:
-  # Cross toolchain for Gen1 MPCs / Force (armhf, glibc 2.27, GCC 14), pinned to a release.
-  XTOOLS_URL: https://github.com/tttapa/toolchains/releases/download/1.4.0/x-tools-armv7-neon-linux-gnueabihf-gcc14.tar.xz
+  # The cross toolchain that matches MPC OS 3.10 on G1 MPCs (GCC 13.4, glibc 2.39, from inMusic's open source
+  # release): built by .github/workflows/toolchain.yml from toolchain/, published as this release.
+  TOOLCHAIN_TAG: toolchain-az01-g1-3.10
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -69,12 +70,17 @@ jobs:
           sudo apt-get install -y ninja-build libx11-dev x11proto-dev
           pip install pillow
 
-      - name: Cross toolchain
+      - name: Cross toolchain (MPC OS 3.10's GCC 13.4 + glibc 2.39)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "$HOME/opt"
-          tools/ci_run.sh Toolchain bash -c 'curl -fsSL "$XTOOLS_URL" -o /tmp/xtools.tar.xz && tar xJf /tmp/xtools.tar.xz -C "$HOME/opt"'
-          echo "TBM_XTOOLS=$HOME/opt/x-tools/armv7-neon-linux-gnueabihf" >> "$GITHUB_ENV"
-          "$HOME/opt/x-tools/armv7-neon-linux-gnueabihf/bin/armv7-neon-linux-gnueabihf-g++" --version | head -1
+          mkdir -p "$HOME/opt" /tmp/tc
+          tools/ci_run.sh Toolchain gh release download "$TOOLCHAIN_TAG" -D /tmp/tc -p 'az01-g1-3.10-toolchain-x86_64.tar.xz*'
+          (cd /tmp/tc && sha256sum -c az01-g1-3.10-toolchain-x86_64.tar.xz.sha256 --ignore-missing 2>/dev/null || \
+             [ "$(sha256sum az01-g1-3.10-toolchain-x86_64.tar.xz | cut -d' ' -f1)" = "$(cut -d' ' -f1 az01-g1-3.10-toolchain-x86_64.tar.xz.sha256)" ])
+          tar xJf /tmp/tc/az01-g1-3.10-toolchain-x86_64.tar.xz -C "$HOME/opt"
+          echo "TBM_AZ01=$HOME/opt/az01-g1-3.10" >> "$GITHUB_ENV"
+          echo "::notice title=Toolchain::$("$HOME/opt/az01-g1-3.10/bin/arm-az01-linux-gnueabihf-g++" --version | head -1)"
 
       - name: X11 headers for the cross build
         # JUCE's Linux GUI code needs X11's headers to compile (they are architecture-neutral); it loads
@@ -92,7 +98,7 @@ jobs:
       - name: Configure
         run: |
           tools/ci_run.sh "Configure (armv7)" cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/armv7-mpc.cmake -DTBM_XTOOLS="$TBM_XTOOLS" \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/az01-g1.cmake -DTBM_AZ01="$TBM_AZ01" \
             -DTBM_X11_INCLUDE="$PWD/x11inc" -DTBM_HOST_TEST=OFF
 
       - name: Build
@@ -101,7 +107,7 @@ jobs:
       - name: Check the library
         run: |
           SO=build-arm/twistedbreaks.so
-          "$TBM_XTOOLS/bin/armv7-neon-linux-gnueabihf-strip" "$SO"
+          "$TBM_AZ01/bin/arm-az01-linux-gnueabihf-strip" "$SO"
           file "$SO"
           echo "::notice title=Library::$(ls -l "$SO")"
           echo "::notice title=Library::needs: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')"
@@ -109,7 +115,8 @@ jobs:
           echo "::notice title=Library::exported: $exported"
           [ "$exported" = "VSTPluginMain " ] || { echo "::error::exports more than VSTPluginMain"; exit 1; }
           glibc=$(readelf -V "$SO" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
-          echo "::notice title=Library::highest glibc: $glibc (MPC OS 2.x has 2.32, 3.x has 2.39)"
+          echo "::notice title=Library::highest glibc: $glibc (MPC OS 3.x has 2.39)"
+          [ "$(printf '%s\nGLIBC_2.39\n' "$glibc" | sort -V | tail -1)" = GLIBC_2.39 ] || { echo "::error::needs $glibc, newer than MPC OS 3.10's 2.39"; exit 1; }
           if readelf -V "$SO" | grep -q 'GLIBCXX_'; then echo "::error::links libstdc++ dynamically"; exit 1; fi
           for n in $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/'); do
             case "$n" in libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-armhf.so.3) ;;

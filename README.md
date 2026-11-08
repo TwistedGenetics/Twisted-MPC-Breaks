@@ -89,13 +89,33 @@ the Q-Links drive it.
 GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 - **Offline tests**: the plugin for x86 under ASan/UBSan, driven by the toolkit's host test and
   `tests/tbm_test.c` (kits, pads, slicing, the sample browser, steps, pad notes + LEARN, SAVE KIT, the pattern from the song position, state save/restore, several instances).
-- **MPC plugin**: cross-compiled for armv7 (glibc 2.27, GCC 14), checked (exports, glibc, libraries), skin built,
-  packaged as the installer zip. Builds of `main` are published under Releases.
+- **MPC plugin**: cross-compiled with the toolchain that matches MPC OS 3.10 (below), checked (exports, glibc no newer
+  than 2.39, no dynamic libstdc++, libraries), skin built, packaged as the installer zip. Builds of `main` are
+  published under Releases.
+
+### The MPC G1 toolchain (from inMusic's open source release)
+inMusic publishes the Linux side of MPC OS: [inmusic-software/az0x-open-source](https://github.com/inmusic-software/az0x-open-source),
+branch `mpc-g1/3.10` for the G1 MPCs (One / One+, Live / Live II, X / X SE, Key 37 / 61, Force). `toolchain/` pins it:
+
+| | MPC OS 3.10 (G1) |
+|---|---|
+| Kernel | linux-az01 6.18.44, PREEMPT_RT, RK3288 (MPC One = board ACVA; its audio: 2 ch, 44.1 kHz) |
+| C library | glibc 2.39 (release/2.39/master `ce65d944` + Yocto patches), built against Linux 6.6 headers |
+| Compiler | GCC 13.4.0 (+ Yocto patches); binutils 2.42 (Yocto scarthgap) |
+| Also on the device | alsa-lib 1.2.11, FreeType 2.13.2, libusb 1.0.27, systemd 255, ... |
+
+`toolchain/build.sh` builds `arm-az01-linux-gnueabihf` from those exact sources (each archive sha256-checked
+against `toolchain/az01-g1-3.10.lock`): binutils, GCC stage 1, glibc into a sysroot, GCC with C++ (libstdc++ and
+libgcc built `-fPIC`, so they link statically into a plugin), alsa-lib in the sysroot, then checks the result
+(hard-float loader, VFP arguments, GLIBC versions, runs under qemu-arm). `.github/workflows/toolchain.yml` runs it
+and publishes release [`toolchain-az01-g1-3.10`](../../releases/tag/toolchain-az01-g1-3.10); the plugin build uses that.
+`cmake -DCMAKE_TOOLCHAIN_FILE=cmake/az01-g1.cmake -DTBM_AZ01=<extracted az01-g1-3.10>` builds with it locally.
+(`cmake/armv7-mpc.cmake`, the earlier glibc 2.27 toolchain, still works for MPC OS 2.x.)
 
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.5)
+## Known limits (1.6)
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
 - Untested on hardware: CPU load, how smoothly the MPC redraws the slice screen and the STEPS playhead, and the
   skin's readability need a device check.
