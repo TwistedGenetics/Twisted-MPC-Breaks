@@ -125,6 +125,8 @@ gcc2() {
     log "GCC 13.4.0, final (C, C++, libstdc++ against the sysroot's glibc)"
     rm -rf "$WORK/b-gcc2" && mkdir -p "$WORK/b-gcc2" && cd "$WORK/b-gcc2"
     gcc_defaults_h "$PWD"
+    # libstdc++.a / libgcc.a position-independent, so they link statically into a plugin (.so)
+    CFLAGS_FOR_TARGET="-O2 -g -fPIC" CXXFLAGS_FOR_TARGET="-O2 -g -fPIC" \
     "$WORK/src/gcc/gcc-13.4.0/configure" --target=$TARGET --prefix="$PREFIX" --with-sysroot="$SYSROOT" \
         "${ARCH_FLAGS[@]}" --enable-languages=c,c++ --disable-multilib --disable-nls \
         --enable-shared --enable-threads=posix --enable-__cxa_atexit --enable-libstdcxx-time=yes \
@@ -152,6 +154,10 @@ check() {
     printf '#include <iostream>\n#include <thread>\n#include <alsa/asoundlib.h>\nint main(){std::thread t([]{std::cout << "hello from libstdc++, alsa-lib " << snd_asoundlib_version() << std::endl;});t.join();}\n' > "$d/hello.cpp"
     $TARGET-gcc -O2 "$d/hello.c" -o "$d/hello"
     $TARGET-g++ -O2 -std=c++17 "$d/hello.cpp" -o "$d/hellocc" -lasound -pthread
+    printf '#include <string>\n#include <vector>\nextern "C" int plugin_entry(){std::vector<std::string> v{"a","b"};return (int)v.size();}\n' > "$d/plugin.cpp"
+    $TARGET-g++ -O2 -shared -fPIC "$d/plugin.cpp" -o "$d/plugin.so" -static-libstdc++ -static-libgcc
+    if readelf -d "$d/plugin.so" | grep -q 'libstdc++'; then echo "::error::static libstdc++ did not link in"; exit 1; fi
+    echo "plugin.so: static libstdc++ links into a shared library"
     for b in hello hellocc; do
         readelf -l "$d/$b" | grep -q 'ld-linux-armhf.so.3' || { echo "::error::$b: not the hard-float loader"; exit 1; }
         readelf -A "$d/$b" | grep -q 'Tag_ABI_VFP_args: VFP registers' || { echo "::error::$b: not hard float"; exit 1; }
