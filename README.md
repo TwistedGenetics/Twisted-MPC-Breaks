@@ -67,6 +67,11 @@ the Q-Links drive it.
   on the Mikro: hit a pad to paint the selected move there (again: THRU), hold one pad and hit another to join the steps
   between them. The pads don't play sounds while it is on. MANGLE presets made on the Mac (`.tbmangle`) go in
   `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Mangle/`.
+- **Q-Links**: each page has its own bank, continuous controls first. On an MPC One (4 knobs) the Q-Link button steps
+  through columns of four, and the column the knobs drive is outlined. KIT: level, crossfader, kit, scene. SEQUENCER:
+  mutate amount, length, step, snapshot. MANGLE FX: texture amount, size, space time, space amount. MACROS: amount,
+  group, latch, then the eight macros. One-press buttons (LOAD, HOME, AUTO SLICE…) are left off the Q-Links, so a knob
+  turned by accident can't fire them.
 - **Which control am I on?** The control you touch gets an amber frame; the data wheel then turns that one.
 - **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Why does pad 01 sound slowed down / pitched?** The factory kit's break is a 170 BPM loop with TEMPO SYNC on,
@@ -122,7 +127,7 @@ and publishes release [`toolchain-az01-g1-3.10`](../../releases/tag/toolchain-az
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.7)
+## Known limits (1.7.1)
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
 - MANGLE's TEXTURE (grains) and SPACE add CPU on top of the break: check the MPC's CPU meter with CLOUD at high
   density before relying on it live.

@@ -226,6 +226,41 @@ def rivet(im, x, y, r, seed):
 
 
 # =================================================================================================
+#  Q-Links (1.7.1). An MPC One has 4 knobs: each 4 slots are one column, and the Q-Link button steps through the
+#  columns (qlink_bounds=column outlines the one in use). So each page puts its continuous controls in column 1,
+#  and leaves one-press buttons (LOAD, HOME, AUTO SLICE...) off: a knob turned by accident would fire them.
+#  "-" leaves a slot empty, to start the next column.
+# =================================================================================================
+QLINKS = {
+    "KIT":        ["master_gain", "xfade", "kit", "scene_view",
+                   "master_limiter", "xfade_curve"],
+    "PAD":        ["pad", "sp_gain", "sp_pitch", "sp_pan",
+                   "sp_start", "sp_end", "sp_velsens", "sp_slice",
+                   "sp_mode", "sp_stretch", "sp_sync", "sp_char",
+                   "sp_swap", "sp_swapq", "sp_group", "sp_choke"],
+    "SAMPLES":    ["pad", "smp_file", "smp_slice"],
+    "SLICE":      ["pad", "sl_pick", "sl_pos", "sl_view",
+                   "sl_snap", "sl_tap"],
+    "AUTO SLICE": ["pad", "sl_sens", "sl_count"],
+    "STEPS":      ["pad", "seq_length", "seq_res", "seq_run"],
+    "SEQUENCER":  ["mut_amount", "seq_length", "seq_res", "snapshot",
+                   "bank_active", "seq_run", "seq_fill"],
+    "FX EDIT":    ["fx_sel", "fx_p1", "fx_p2", "fx_p3",
+                   "fx_mode", "fx_on", "fx_group"],
+    "MANGLE":     ["mgl_mix", "mgl_amount", "mgl_fill_every", "mgl_steps",
+                   "mg_brush", "mgl_style", "mgl_slot", "mgl_on",
+                   "mgl_hold", "mg_join", "mgl_chain"],
+    "MANGLE FX":  ["mgl_tex_amount", "mgl_tex_size", "mgl_space_time", "mgl_space_amount",
+                   "mgl_tex_density", "mgl_tex_scatter", "mgl_space_fb", "mgl_mix",
+                   "mgl_tex_mode", "mgl_space_mode", "mgl_target", "mgl_amount",
+                   "mg_preset", "mgl_fill_every", "mgl_fill_len", "mg_pads"],
+    "MACROS":     ["macro_amount", "macro_group", "macro_latch", "-",
+                   "macro_destroy", "macro_mangle", "macro_rewind", "macro_darken",
+                   "macro_tapestop", "macro_dive", "macro_roll", "macro_scifi"],
+    "SETUP":      ["pad", "note_base", "pad_follow", "swap_rehit"],
+}
+
+# =================================================================================================
 #  A tab
 # =================================================================================================
 class Tab:
@@ -653,6 +688,8 @@ def render(tab, out):
             for i in range(n0, len(out.lines)):
                 out.lines[i] += " when=" + c["when"]
     for title, keys in tab.qlinks:
+        keys = QLINKS.get(tab.name, keys)
+        assert len(keys) <= 16, tab.name
         out.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
     bg.save(os.path.join(ART, "tab_" + slug + ".png"), optimize=True)   # tab_: never a control's name
     if tab.name == "SLICE":
@@ -1372,6 +1409,7 @@ def build():
                  ("accent", "ffa928"), ("accent_hi", "ffc865"), ("lcd", "0c0806"), ("seg_active", "0e1211"),
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
+    out.lines.append("qlink_bounds=column   # MPC outlines the Q-Link column the 4 knobs drive (MPC One: the Q-Link button steps)")
     tiles = []
     for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_autoslice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_mangle, tab_mangle_fx, tab_macros, tab_mixer, tab_setup):
         tab = make()
