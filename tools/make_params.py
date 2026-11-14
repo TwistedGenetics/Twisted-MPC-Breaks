@@ -252,5 +252,49 @@ section("Chop", [
     trig("sl_tightall", "Tighten All"),
 ])
 
+# ---- 1.7: MANGLE (Twisted Breaks 0.29 / 0.30, A15) ----------------------------------------------------------
+# The engine's own mgl_* parameters (keys = their ids), then the MPC's: the bar as 16 picture cells, a tap row,
+# the move to paint, JOIN, RANDOMIZE / MUTATE / REVERT / CLEAR, presets, and the pads as steps.
+# Cell = move * 4 + tied * 2 + playing (0..35); 36 = past the bar's last step.
+MANGLE_MOVES = ["Thru", "Repeat", "Reverse", "Half", "Stop", "Double", "Scratch", "Freeze", "Shuffle"]
+section("Mangle", [
+    opts("mgl_on", "Mangle", ONOFF, 0),
+    opts("mgl_target", "Mangle Target", ["Master", "Group A", "Group B", "Group C", "Group D"], 0),
+    opts("mgl_steps", "Mangle Steps", ["4 Steps", "8 Steps", "16 Steps"], 1),
+    num("mgl_mix", "Mangle Mix", 0, 100, 100, "%", display="int"),
+    num("mgl_amount", "Mangle Amount", 0, 100, 100, "%", display="int"),
+    opts("mgl_fill_every", "Fill Every", ["Off", "2 Bars", "4 Bars", "8 Bars", "16 Bars"], 0),
+    opts("mgl_fill_len", "Fill Length", ["Bar", "Half Bar"], 0),
+    opts("mgl_hold", "Mangle Hold", ONOFF, 0),
+    trig("mgl_fill_next", "Fill Next Bar"),
+    opts("mgl_style", "Randomize Style", ["Gentle", "Medium", "Wild"], 1),
+    opts("mgl_slot", "Mangle Slot", ["Slot A", "Slot B", "Slot C", "Slot D"], 0),
+    opts("mgl_chain", "Mangle Chain", ONOFF, 0),
+    opts("mgl_tex_mode", "Texture", ["Off", "Tight", "Scatter", "Cloud", "Reverse"], 0),
+    num("mgl_tex_amount", "Texture Amount", 0, 100, 50, "%", display="int"),
+    num("mgl_tex_size", "Texture Size", 10, 250, 40, "ms", display="int"),
+    num("mgl_tex_density", "Texture Density", 2, 60, 16, "/s", display="int"),
+    num("mgl_tex_scatter", "Texture Scatter", 0, 100, 30, "%", display="int"),
+    opts("mgl_space_mode", "Space", ["Off", "Echo", "Ping-Pong", "Diffuse"], 0),
+    opts("mgl_space_time", "Space Time", ["1/32", "1/16", "1/16 T", "1/16 D", "1/8", "1/8 T", "1/8 D", "1/4", "1/4 T", "1/4 D", "1/2"], 6),
+    num("mgl_space_fb", "Space Feedback", 0, 90, 45, "%", display="int"),
+    num("mgl_space_amount", "Space Amount", 0, 100, 35, "%", display="int"),
+    opts("mgl_lock_tex", "Lock Texture", ONOFF, 0),
+    opts("mgl_lock_space", "Lock Space", ONOFF, 0),
+    opts("mg_brush", "Paint Move", MANGLE_MOVES, 1),
+    opts("mg_join", "Join Steps", ONOFF, 0),
+    opts("mg_tap", "Step Tap", ["Step %d" % (i + 1) for i in range(16)] + ["None"], 16),
+] + [num("mg_c%02d" % (i + 1), "Mangle Step %d" % (i + 1), 0, 36, 0, display="int") for i in range(16)] + [
+    trig("mg_rand", "Randomize"),
+    trig("mg_mutate", "Mutate Bar"),
+    trig("mg_revert", "Revert"),
+    trig("mg_clear", "Clear Bar"),
+    readout("mg_info", "Mangle Info"),
+    num("mg_preset", "Mangle Preset", 0, 99, 0, display="int", dynamic_display=True, refresh_display=True),
+    trig("mg_load", "Load Mangle Preset"),
+    trig("mg_save", "Save Mangle Preset"),
+    opts("mg_pads", "Pads Paint Steps", ONOFF, 0),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

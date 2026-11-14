@@ -3140,6 +3140,503 @@
    ],
    "default": 0,
    "momentary": true
+  },
+  {
+   "key": "mgl_on",
+   "name": "Mangle",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_target",
+   "name": "Mangle Target",
+   "options": [
+    "Master",
+    "Group A",
+    "Group B",
+    "Group C",
+    "Group D"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_steps",
+   "name": "Mangle Steps",
+   "options": [
+    "4 Steps",
+    "8 Steps",
+    "16 Steps"
+   ],
+   "default": 1
+  },
+  {
+   "key": "mgl_mix",
+   "name": "Mangle Mix",
+   "min": 0,
+   "max": 100,
+   "default": 100,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_amount",
+   "name": "Mangle Amount",
+   "min": 0,
+   "max": 100,
+   "default": 100,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_fill_every",
+   "name": "Fill Every",
+   "options": [
+    "Off",
+    "2 Bars",
+    "4 Bars",
+    "8 Bars",
+    "16 Bars"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_fill_len",
+   "name": "Fill Length",
+   "options": [
+    "Bar",
+    "Half Bar"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_hold",
+   "name": "Mangle Hold",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_fill_next",
+   "name": "Fill Next Bar",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mgl_style",
+   "name": "Randomize Style",
+   "options": [
+    "Gentle",
+    "Medium",
+    "Wild"
+   ],
+   "default": 1
+  },
+  {
+   "key": "mgl_slot",
+   "name": "Mangle Slot",
+   "options": [
+    "Slot A",
+    "Slot B",
+    "Slot C",
+    "Slot D"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_chain",
+   "name": "Mangle Chain",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_tex_mode",
+   "name": "Texture",
+   "options": [
+    "Off",
+    "Tight",
+    "Scatter",
+    "Cloud",
+    "Reverse"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_tex_amount",
+   "name": "Texture Amount",
+   "min": 0,
+   "max": 100,
+   "default": 50,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_tex_size",
+   "name": "Texture Size",
+   "min": 10,
+   "max": 250,
+   "default": 40,
+   "unit": "ms",
+   "display": "int"
+  },
+  {
+   "key": "mgl_tex_density",
+   "name": "Texture Density",
+   "min": 2,
+   "max": 60,
+   "default": 16,
+   "unit": "/s",
+   "display": "int"
+  },
+  {
+   "key": "mgl_tex_scatter",
+   "name": "Texture Scatter",
+   "min": 0,
+   "max": 100,
+   "default": 30,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_space_mode",
+   "name": "Space",
+   "options": [
+    "Off",
+    "Echo",
+    "Ping-Pong",
+    "Diffuse"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_space_time",
+   "name": "Space Time",
+   "options": [
+    "1/32",
+    "1/16",
+    "1/16 T",
+    "1/16 D",
+    "1/8",
+    "1/8 T",
+    "1/8 D",
+    "1/4",
+    "1/4 T",
+    "1/4 D",
+    "1/2"
+   ],
+   "default": 6
+  },
+  {
+   "key": "mgl_space_fb",
+   "name": "Space Feedback",
+   "min": 0,
+   "max": 90,
+   "default": 45,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_space_amount",
+   "name": "Space Amount",
+   "min": 0,
+   "max": 100,
+   "default": 35,
+   "unit": "%",
+   "display": "int"
+  },
+  {
+   "key": "mgl_lock_tex",
+   "name": "Lock Texture",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mgl_lock_space",
+   "name": "Lock Space",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mg_brush",
+   "name": "Paint Move",
+   "options": [
+    "Thru",
+    "Repeat",
+    "Reverse",
+    "Half",
+    "Stop",
+    "Double",
+    "Scratch",
+    "Freeze",
+    "Shuffle"
+   ],
+   "default": 1
+  },
+  {
+   "key": "mg_join",
+   "name": "Join Steps",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "mg_tap",
+   "name": "Step Tap",
+   "options": [
+    "Step 1",
+    "Step 2",
+    "Step 3",
+    "Step 4",
+    "Step 5",
+    "Step 6",
+    "Step 7",
+    "Step 8",
+    "Step 9",
+    "Step 10",
+    "Step 11",
+    "Step 12",
+    "Step 13",
+    "Step 14",
+    "Step 15",
+    "Step 16",
+    "None"
+   ],
+   "default": 16
+  },
+  {
+   "key": "mg_c01",
+   "name": "Mangle Step 1",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c02",
+   "name": "Mangle Step 2",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c03",
+   "name": "Mangle Step 3",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c04",
+   "name": "Mangle Step 4",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c05",
+   "name": "Mangle Step 5",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c06",
+   "name": "Mangle Step 6",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c07",
+   "name": "Mangle Step 7",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c08",
+   "name": "Mangle Step 8",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c09",
+   "name": "Mangle Step 9",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c10",
+   "name": "Mangle Step 10",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c11",
+   "name": "Mangle Step 11",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c12",
+   "name": "Mangle Step 12",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c13",
+   "name": "Mangle Step 13",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c14",
+   "name": "Mangle Step 14",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c15",
+   "name": "Mangle Step 15",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_c16",
+   "name": "Mangle Step 16",
+   "min": 0,
+   "max": 36,
+   "default": 0,
+   "display": "int"
+  },
+  {
+   "key": "mg_rand",
+   "name": "Randomize",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_mutate",
+   "name": "Mutate Bar",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_revert",
+   "name": "Revert",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_clear",
+   "name": "Clear Bar",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_info",
+   "name": "Mangle Info",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "mg_preset",
+   "name": "Mangle Preset",
+   "min": 0,
+   "max": 99,
+   "default": 0,
+   "display": "int",
+   "dynamic_display": true,
+   "refresh_display": true
+  },
+  {
+   "key": "mg_load",
+   "name": "Load Mangle Preset",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_save",
+   "name": "Save Mangle Preset",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "mg_pads",
+   "name": "Pads Paint Steps",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   }
  ],
  "sections": [
@@ -3571,6 +4068,62 @@
     "sl_nr2",
     "sl_tight",
     "sl_tightall"
+   ]
+  },
+  {
+   "label": "Mangle",
+   "keys": [
+    "mgl_on",
+    "mgl_target",
+    "mgl_steps",
+    "mgl_mix",
+    "mgl_amount",
+    "mgl_fill_every",
+    "mgl_fill_len",
+    "mgl_hold",
+    "mgl_fill_next",
+    "mgl_style",
+    "mgl_slot",
+    "mgl_chain",
+    "mgl_tex_mode",
+    "mgl_tex_amount",
+    "mgl_tex_size",
+    "mgl_tex_density",
+    "mgl_tex_scatter",
+    "mgl_space_mode",
+    "mgl_space_time",
+    "mgl_space_fb",
+    "mgl_space_amount",
+    "mgl_lock_tex",
+    "mgl_lock_space",
+    "mg_brush",
+    "mg_join",
+    "mg_tap",
+    "mg_c01",
+    "mg_c02",
+    "mg_c03",
+    "mg_c04",
+    "mg_c05",
+    "mg_c06",
+    "mg_c07",
+    "mg_c08",
+    "mg_c09",
+    "mg_c10",
+    "mg_c11",
+    "mg_c12",
+    "mg_c13",
+    "mg_c14",
+    "mg_c15",
+    "mg_c16",
+    "mg_rand",
+    "mg_mutate",
+    "mg_revert",
+    "mg_clear",
+    "mg_info",
+    "mg_preset",
+    "mg_load",
+    "mg_save",
+    "mg_pads"
    ]
   }
  ]

@@ -33,6 +33,7 @@
 #include "PluginProcessor.h"
 #include "Core/FxDefs.h"
 #include "Core/MacroDefs.h"
+#include "Core/MangleOps.h"
 #include "Engine/PadVoice.h"
 #include "Engine/SampleLoader.h"
 
@@ -197,7 +198,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, slView, slSnap, listRow, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, mgBrush, mgJoin, mgTap, mgCell, mgPreset, mgPads, slView, slSnap, listRow, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -214,14 +215,16 @@ namespace
         tStatus, tSlInfo, tSmpInfo, tStInfo, tNoteInfo, tSlHead, tSlFoot, tSmpPath,
         tRow1, tRow2, tRow3, tRow4, tRow5, tRow6, tRow7,
         tSpInfo, tSnd1, tSnd2, tKitInfo, tKitNameEdit, tFxName, tFxN1, tFxN2, tFxN3,
-        tList1, tList2, tList3, tList4, tList5, tList6, tList7, tList8, kNumTexts
+        tList1, tList2, tList3, tList4, tList5, tList6, tList7, tList8, tMgInfo, kNumTexts
     };
     const char* const kTextKeys[kNumTexts] = {
         "status", "sl_info", "smp_info", "st_info", "note_info", "sl_head", "sl_foot", "smp_path",
         "smp_l1", "smp_l2", "smp_l3", "smp_l4", "smp_l5", "smp_l6", "smp_l7",
         "sp_info", "snd_info1", "snd_info2", "kit_info", "kit_name", "fx_name", "fx_n1", "fx_n2", "fx_n3",
-        "smp_r_1", "smp_r_2", "smp_r_3", "smp_r_4", "smp_r_5", "smp_r_6", "smp_r_7", "smp_r_8"
+        "smp_r_1", "smp_r_2", "smp_r_3", "smp_r_4", "smp_r_5", "smp_r_6", "smp_r_7", "smp_r_8", "mg_info"
     };
+    constexpr int kMgSteps = 16;
+    constexpr int kMgPastEnd = 36;   // cell frame for steps past the bar's length (tools/make_params.py)
     constexpr int kList = 8;   // the browser's touch list (tools/make_params.py LIST_ROWS)
 
     // The naming keyboard's keys (tools/make_params.py KEY_CHARS): option i types kKeyChars[i]
@@ -267,6 +270,12 @@ namespace
                 else if (std::strcmp (k, "sl_pos") == 0)       own (Own::slPos);
                 else if (std::strcmp (k, "sl_zoom") == 0)      own (Own::slZoom);
                 else if (std::strcmp (k, "sl_view") == 0)      own (Own::slView);
+                else if (std::strcmp (k, "mg_brush") == 0)     own (Own::mgBrush);
+                else if (std::strcmp (k, "mg_join") == 0)      own (Own::mgJoin);
+                else if (std::strcmp (k, "mg_tap") == 0)       own (Own::mgTap);
+                else if (std::strcmp (k, "mg_preset") == 0)    own (Own::mgPreset);
+                else if (std::strcmp (k, "mg_pads") == 0)      own (Own::mgPads);
+                else if (startsWith (k, "mg_c") && std::isdigit ((unsigned char) k[4])) own (Own::mgCell, std::atoi (k + 4) - 1);
                 else if (std::strcmp (k, "sl_snap") == 0)      own (Own::slSnap);
                 else if (std::strcmp (k, "wv_tap") == 0)       own (Own::wvTap);
                 else if (startsWith (k, "wv_"))                own (Own::wave, std::atoi (k + 3) - 1);
@@ -275,7 +284,7 @@ namespace
                 else if (startsWith (k, "sp_"))                in.kind = Kind::padParam;
                 else if (startsWith (k, "fx_"))                in.kind = Kind::fxParam;
                 else if (PARAMS[i].momentary && (startsWith (k, "smp_") || startsWith (k, "st_") || startsWith (k, "note_")
-                                                 || startsWith (k, "kit_") || startsWith (k, "sl_")))
+                                                 || startsWith (k, "kit_") || startsWith (k, "sl_") || startsWith (k, "mg_")))
                     own (Own::trigger);
             }
             return t;
@@ -353,6 +362,7 @@ namespace
         void midiIn (const uint8_t* msg, int len)
         {
             if (len <= 0 || len > 3) return;
+            if (len == 3 && mangleNote (msg)) return;
             if (len == 3 && dropRehit (msg)) return;
             midi.addEvent (msg, len, 0);
             // A pad hit selects that pad, so every page shows the pad just played (not while LEARN waits for a note).
@@ -403,6 +413,23 @@ namespace
 
             releaseTriggers (frames);
             pollChanges (frames);
+        }
+
+        /** PADS PAINT STEPS (MANGLE): pads 1-16 are the bar's steps, as on the Mikro: a tap paints the move (again:
+            THRU), hold one and hit another to join them. The notes don't play; the message thread does the painting
+            (mangleEvents: one producer, this thread). */
+        bool mangleNote (const uint8_t* msg)
+        {
+            if (! mgPads.load (std::memory_order_relaxed)) return false;
+            const int status = msg[0] & 0xf0;
+            if (status != 0x90 && status != 0x80) return false;
+            const bool down = status == 0x90 && msg[2] > 0;
+            const int pad = proc->getEngine().padForNote (msg[1] & 0x7f);
+            if (pad < 0) return false;
+            int start1, size1, start2, size2;
+            mangleFifo.prepareToWrite (1, start1, size1, start2, size2);
+            if (size1 > 0) { mangleEvents[(size_t) start1] = (pad % kMgSteps) | (down ? 0x100 : 0); mangleFifo.finishedWrite (1); }
+            return true;
         }
 
         /** SWAP RE-HIT = IGNORE: a hit on the pad its SWAP group is playing does nothing (the engine would stop it at
@@ -576,7 +603,8 @@ namespace
                     if (p == nullptr) return put (buf, len, "-");
                     return put (buf, len, tb::fx::valueText (tb::fx::def (fxSel.load()).params[i], p->convertFrom0to1 (p->getValue())));
                 }
-                if (base == "sl_pos")   return putText (tSlPos, buf, len);   // the marker in ms (100 ms old at most)
+                if (base == "sl_pos")   return putText (tSlPos, buf, len);
+                if (base == "mg_preset") return put (buf, len, manglePresetName (mgPreset.load()));   // the marker in ms (100 ms old at most)
                 idx = paramIndex (base.c_str());
                 if (idx >= 0)
                     if (auto* p = resolveIdx (idx)) return put (buf, len, p->getCurrentValueAsText());
@@ -990,6 +1018,7 @@ namespace
             if (selName != loaded && nKits > 0) ki << "   |   LOAD TO SWITCH";
 
             releaseAudition();
+            const auto mangleText = refreshMangle();
             const auto screen = refreshScreen (pad, info);
             const int fs = fxSel.load(), fg = fxGroup.load();
             const auto& fd = tb::fx::def (fs);
@@ -1014,6 +1043,7 @@ namespace
             setText (tKitInfo, ki);
             setText (tKitNameEdit, nameText);
             setText (tFxName, fxName);
+            setText (tMgInfo, mangleText);
             setText (tFxN1, fxN[0]);
             setText (tFxN2, fxN[1]);
             setText (tFxN3, fxN[2]);
@@ -1506,6 +1536,7 @@ namespace
                 if (macros & (1u << m)) items.add ("MACRO " + juce::String (tb::macro::def (m).name).toUpperCase());
             if (! character.isEmpty()) items.add ("CHARACTER " + character.joinIntoString (", "));
             if (! reversed.isEmpty()) items.add ("REVERSED " + reversed.joinIntoString (", "));
+            if (raw (tb::params::mglOn) > 0.5f) items.add ("MANGLE ON (MANGLE PAGE)");
             items.add (raw (tb::params::masterLimiter) > 0.5f ? "LIMITER ON" : "LIMITER OFF");
             out.line2 = (items.size() == 1 ? "NO FX, MACROS OR CHARACTER ON  |  " : "") + items.joinIntoString ("  |  ");
             return out;
@@ -1537,6 +1568,12 @@ namespace
                 case Own::noteBase:    return (float) noteBaseOption();
                 case Own::step:        return proc->getBridge().seq.get (selectedPad.load(), in.sub).on ? 1.0f : 0.0f;
                 case Own::slPos:       return (float) slPosValue.load();
+                case Own::mgBrush:     return (float) mgBrush.load();
+                case Own::mgJoin:      return mgJoinOn.load() ? 1.0f : 0.0f;
+                case Own::mgTap:       return (float) kMgSteps;
+                case Own::mgCell:      return (float) mgCells[(size_t) in.sub].load();
+                case Own::mgPreset:    return (float) mgPreset.load();
+                case Own::mgPads:      return mgPads.load() ? 1.0f : 0.0f;
                 case Own::slZoom:      return slView.load() == 1 ? 1.0f : 0.0f;
                 case Own::slView:      return (float) slView.load();
                 case Own::slSnap:      return (float) slSnap.load();
@@ -1622,6 +1659,18 @@ namespace
                     });
                     return;
                 }
+                case Own::mgBrush:     mgBrush.store (juce::jlimit (0, (int) tb::mangle::kNumMoves - 1, juce::roundToInt (v))); return;
+                case Own::mgJoin:      mgJoinOn.store (v > 0.5f); if (v < 0.5f) mgJoinStart.store (-1); return;
+                case Own::mgTap:
+                {
+                    const int st = juce::roundToInt (v);
+                    if (st >= 0 && st < kMgSteps) juce::MessageManager::callAsync ([this, st] { mangleTap (st); refreshInfo(); });
+                    changed[(size_t) idx].store (true);   // back to "None": the same step taps again
+                    return;
+                }
+                case Own::mgPreset:    mgPreset.store (juce::jlimit (0, 99, juce::roundToInt (v))); return;
+                case Own::mgPads:      mgPads.store (v > 0.5f); return;
+                case Own::mgCell:      return;
                 case Own::slZoom:      slView.store (v > 0.5f ? 1 : 0); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
                 case Own::slView:      slView.store (juce::jlimit (0, 4, juce::roundToInt (v))); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
                 case Own::slSnap:      slSnap.store (juce::jlimit (0, 2, juce::roundToInt (v))); return;
@@ -1681,6 +1730,14 @@ namespace
                 juce::MessageManager::callAsync ([this, name] { saveKitHere (name); });
             }
             else if (std::strcmp (key, "kit_load") == 0)       loadKit (selectedKit(), false);
+            else if (std::strcmp (key, "mg_rand") == 0)        juce::MessageManager::callAsync ([this] { proc->getMangleOps().randomize(); });
+            else if (std::strcmp (key, "mg_mutate") == 0)      juce::MessageManager::callAsync ([this] { proc->getMangleOps().mutate(); });
+            else if (std::strcmp (key, "mg_revert") == 0)
+                juce::MessageManager::callAsync ([this] { setStatus (proc->getMangleOps().revert() ? "MANGLE: REVERTED" : "MANGLE: NOTHING TO REVERT"); });
+            else if (std::strcmp (key, "mg_clear") == 0)
+                juce::MessageManager::callAsync ([this] { auto& ops = proc->getMangleOps(); ops.set (tb::mangle::Pattern {}, true); refreshInfo(); });
+            else if (std::strcmp (key, "mg_load") == 0)        juce::MessageManager::callAsync ([this] { loadManglePreset(); });
+            else if (std::strcmp (key, "mg_save") == 0)        juce::MessageManager::callAsync ([this] { saveManglePreset(); });
             else if (std::strcmp (key, "kit_prev") == 0)       stepKit (-1);
             else if (std::strcmp (key, "kit_next") == 0)       stepKit (1);
         }
@@ -2079,6 +2136,148 @@ namespace
         }
 
         //======================================================================
+        //  MANGLE (message thread): the bar's cells, taps, pads, presets
+        //======================================================================
+        int mangleStepCount() const
+        {
+            return tb::params::mglStepCounts[juce::jlimit (0, 2, juce::roundToInt (raw (tb::params::mglSteps)))];
+        }
+
+        /** A tap on a step: JOIN waits for a second step and joins the run; otherwise the Mikro's rule: the move
+            painted there, or THRU when that step is already that move on its own. */
+        void mangleTap (int st)
+        {
+            auto& ops = proc->getMangleOps();
+            const int brush = mgBrush.load();
+            if (mgJoinOn.load())
+            {
+                const int first = mgJoinStart.exchange (-1);
+                if (first < 0) { mgJoinStart.store (st); setStatus ("JOIN: NOW TAP THE LAST STEP"); return; }
+                ops.paint (first, st, brush, true);
+                mgJoinOn.store (false);
+                markChanged ("mg_join");
+                setStatus ("MANGLE: " + juce::String (tb::mangle::kMoveNames[brush]) + " ON STEPS " + juce::String (juce::jmin (first, st) + 1)
+                           + "-" + juce::String (juce::jmax (first, st) + 1));
+                return;
+            }
+            const auto p = ops.get();
+            const int s0 = p.runStart (st);
+            if (p.move[(size_t) s0] == brush && p.runLength (s0, tb::mangle::Pattern::kSteps) == 1) ops.clearStep (st);
+            else                                                                                    ops.paint (st, st, brush, false);
+        }
+
+        /** Pads as steps (PADS PAINT STEPS): hold one and hit another to join; a pad let go alone is a tap. */
+        void manglePadEvents()
+        {
+            int start1, size1, start2, size2;
+            const int n = mangleFifo.getNumReady();
+            if (n <= 0) return;
+            mangleFifo.prepareToRead (n, start1, size1, start2, size2);
+            auto handle = [this] (int e)
+            {
+                const int st = e & 0xff;
+                const bool down = (e & 0x100) != 0;
+                auto& ops = proc->getMangleOps();
+                if (down)
+                {
+                    if (mgHeldStep >= 0 && mgHeldStep != st) { ops.paint (mgHeldStep, st, mgBrush.load(), true); mgHeldJoined = true; }
+                    else                                    { mgHeldStep = st; mgHeldJoined = false; }
+                }
+                else if (st == mgHeldStep)
+                {
+                    if (! mgHeldJoined) { const bool join = mgJoinOn.exchange (false); mangleTap (st); if (join) mgJoinOn.store (true); }
+                    mgHeldStep = -1;
+                }
+            };
+            for (int i = 0; i < size1; ++i) handle (mangleEvents[(size_t) (start1 + i)]);
+            for (int i = 0; i < size2; ++i) handle (mangleEvents[(size_t) (start2 + i)]);
+            mangleFifo.finishedRead (size1 + size2);
+        }
+
+        /** Message thread, from refreshInfo(): the cells the bar shows, and its line of text. */
+        juce::String refreshMangle()
+        {
+            manglePadEvents();
+            auto& ops = proc->getMangleOps();
+            const auto p = ops.get();
+            const int steps = mangleStepCount();
+            const int playing = proc->getBridge().mangleStep.load (std::memory_order_relaxed);
+            for (int s = 0; s < kMgSteps; ++s)
+            {
+                const int mv = p.move[(size_t) p.runStart (s)];
+                const int v = s >= steps ? kMgPastEnd : mv * 4 + (p.tie[(size_t) s] != 0 ? 2 : 0) + (s == playing ? 1 : 0);
+                mgCells[(size_t) s].store (v);
+            }
+            const bool on = raw (tb::params::mglOn) > 0.5f;
+            const int slot = proc->getBridge().mangleSlot.load (std::memory_order_relaxed);
+            juce::String t;
+            t << (on ? "ON" : "OFF") << "  |  SLOT " << juce::String::charToString ((juce::juce_wchar) ('A' + juce::jlimit (0, 3, slot)))
+              << (raw (tb::params::mglChain) > 0.5f ? " (CHAIN)" : "") << "  |  " << p.activeSteps (steps) << " OF " << steps << " STEPS MANGLED";
+            if (ops.isBusy())                 t << "  |  RANDOMIZE: LISTENING TO THE NEXT BAR...";
+            else if (ops.getLastReport().isNotEmpty()) t << "  |  " << ops.getLastReport().toUpperCase();
+            if (mgJoinStart.load() >= 0)      t = "JOIN FROM STEP " + juce::String (mgJoinStart.load() + 1) + ": TAP THE LAST STEP";
+            return t;
+        }
+
+        juce::File manglePresetDir() const { return dataRoot.getChildFile ("Presets").getChildFile ("Mangle"); }
+
+        /** Factory presets first, then .tbmangle files (the Mac's format) in the plugin's Presets/Mangle. */
+        juce::Array<juce::File> manglePresetFiles() const
+        {
+            auto files = manglePresetDir().findChildFiles (juce::File::findFiles, false, "*.tbmangle");
+            files.sort();
+            return files;
+        }
+
+        int manglePresetCount() const { return (int) tb::MangleOps::factoryPresets().size() + manglePresetFiles().size(); }
+
+        juce::String manglePresetName (int value) const
+        {
+            const auto& factory = tb::MangleOps::factoryPresets();
+            const int n = manglePresetCount();
+            if (n == 0) return "-";
+            const int i = juce::jmax (0, value) % n;   // the knob wraps round the list, like KIT
+            if (i < (int) factory.size()) return (factory[(size_t) i].group + ": " + factory[(size_t) i].name).toUpperCase();
+            return "USER: " + manglePresetFiles()[i - (int) factory.size()].getFileNameWithoutExtension().toUpperCase();
+        }
+
+        void loadManglePreset()
+        {
+            const auto& factory = tb::MangleOps::factoryPresets();
+            const int n = manglePresetCount();
+            if (n == 0) return;
+            const int i = juce::jmax (0, mgPreset.load()) % n;
+            auto& ops = proc->getMangleOps();
+            if (i < (int) factory.size()) ops.applyPreset (factory[(size_t) i]);
+            else if (auto xml = juce::parseXML (manglePresetFiles()[i - (int) factory.size()]))
+                ops.applyPreset (tb::MangleOps::presetFromTree (juce::ValueTree::fromXml (*xml)));
+            else { setStatus ("MANGLE PRESET: CAN'T READ IT"); return; }
+            setStatus ("MANGLE PRESET: " + manglePresetName (i));
+            refreshInfo();
+        }
+
+        void saveManglePreset()
+        {
+            const auto dir = manglePresetDir();
+            dir.createDirectory();
+            juce::String name;
+            for (int k = 1; k < 1000; ++k)
+            {
+                name = "MPC MANGLE " + juce::String (k).paddedLeft ('0', 3);
+                if (! dir.getChildFile (name + ".tbmangle").exists()) break;
+            }
+            const auto file = dir.getChildFile (name + ".tbmangle");
+            if (auto xml = tb::MangleOps::presetToTree (proc->getMangleOps().capturePreset (name)).createXml(); xml != nullptr && xml->writeTo (file))
+            {
+                const int at = (int) tb::MangleOps::factoryPresets().size() + manglePresetFiles().indexOf (file);
+                mgPreset.store (juce::jmax (0, at));
+                markChanged ("mg_preset");
+                setStatus ("SAVED " + name);
+            }
+            else setStatus ("MANGLE PRESET: SAVE FAILED");
+        }
+
+        //======================================================================
         //  Naming a kit: SAVE KIT opens a keyboard over the KIT page (kit_naming), SAVE there saves
         //======================================================================
         void openNaming()
@@ -2293,6 +2492,14 @@ namespace
         std::atomic<float> slSens { 0.5f };
         std::atomic<int>   slCountOption { 2 }, slPosValue { 0 };
         std::atomic<int>   slView { 0 }, slSnap { 2 };
+        // MANGLE
+        std::atomic<int>   mgBrush { 1 }, mgJoinStart { -1 }, mgPreset { 0 };
+        std::atomic<bool>  mgJoinOn { false }, mgPads { false };
+        std::array<std::atomic<int>, kMgSteps> mgCells {};
+        juce::AbstractFifo mangleFifo { 64 };
+        std::array<int, 64> mangleEvents {};
+        int mgHeldStep = -1;                         // message thread
+        bool mgHeldJoined = false;
         juce::Range<int>   viewFrozen;               // message thread (viewOf)
         int viewPad = -1, viewSel = -1, viewMode = -1, viewN = -1;
         std::array<std::atomic<int>, kWaveCols> wave {}, tabs {};

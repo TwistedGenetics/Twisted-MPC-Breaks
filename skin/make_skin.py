@@ -1253,6 +1253,116 @@ def tab_mixer():
     return t
 
 
+# ---- 1.7: MANGLE (Twisted Breaks 0.30): the bar's steps as cells the engine sets, and the MANGLE FX ----------------
+MG_MOVES = ["THRU", "REPEAT", "REVERSE", "HALF", "STOP", "DOUBLE", "SCRATCH", "FREEZE", "SHUFFLE"]
+MG_SHORT = ["THRU", "RPT", "REV", "HALF", "STOP", "DBL", "SCR", "FRZ", "SHUF"]
+MG_COLOURS = [(58, 54, 46), (255, 169, 40), (96, 178, 255), (140, 220, 110), (232, 72, 60), (255, 214, 92),
+              (214, 120, 255), (150, 236, 236), (255, 128, 176)]
+MG_CELL_W, MG_CELL_H, MG_GAP = 66, 150, 4
+
+
+def mangle_cell_frames():
+    """A step cell: frame = move * 4 + tied * 2 + playing (tools/make_params.py); 36 = past the bar's last step."""
+    w, h = MG_CELL_W * SS, MG_CELL_H * SS
+    frames = []
+    for v in range(37):
+        im = Image.new("RGB", (w, h), (14, 12, 10))
+        d = ImageDraw.Draw(im)
+        if v == 36:   # beyond the bar's length: hatched, empty
+            for y in range(-w, h, 10 * SS):
+                d.line((0, y, w, y + w), fill=(30, 27, 23), width=2 * SS)
+            frames.append(im.resize((MG_CELL_W, MG_CELL_H), Image.LANCZOS))
+            continue
+        move, tied, playing = v // 4, (v // 2) % 2, v % 2
+        col = MG_COLOURS[move]
+        left = 0 if tied else 3 * SS   # a tied step runs on from the one before: no gap on its left
+        if move == 0:
+            d.rounded_rectangle((3 * SS, 3 * SS, w - 3 * SS, h - 3 * SS), radius=6 * SS, fill=(34, 31, 27), outline=(70, 64, 54), width=SS)
+            d.text((w / 2, h / 2), "THRU", font=font(13), fill=(130, 122, 104), anchor="mm")
+        else:
+            glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            ImageDraw.Draw(glow).rectangle((left, 8 * SS, w, h - 8 * SS), fill=col + (110,))
+            g = glow.filter(ImageFilter.GaussianBlur(4 * SS))
+            im.paste(g, (0, 0), g)
+            if tied:
+                d.rectangle((0, 6 * SS, w - 3 * SS, h - 6 * SS), fill=tuple(int(c * 0.78) for c in col))
+                d.text((w / 2, h / 2), "~", font=font(26), fill=(24, 16, 6), anchor="mm")
+            else:
+                d.rounded_rectangle((3 * SS, 6 * SS, w - 3 * SS, h - 6 * SS), radius=6 * SS, fill=col)
+                d.text((w / 2, h / 2), MG_SHORT[move], font=font(19 if len(MG_SHORT[move]) <= 3 else 16), fill=(24, 16, 6), anchor="mm")
+        if playing:   # the playhead: a white bar along the bottom and a bright frame
+            d.rectangle((2 * SS, h - 10 * SS, w - 2 * SS, h - 2 * SS), fill=(250, 250, 236))
+            d.rounded_rectangle((SS, SS, w - SS, h - SS), radius=7 * SS, outline=(250, 250, 236), width=2 * SS)
+        frames.append(im.resize((MG_CELL_W, MG_CELL_H), Image.LANCZOS))
+    return frames
+
+
+def tab_mangle():
+    keys = ["mgl_mix", "mgl_amount", "mgl_fill_every", "mgl_steps", "mgl_tex_amount", "mgl_tex_size", "mgl_space_time",
+            "mgl_space_amount", "mg_brush", "mgl_on", "mgl_hold", "mgl_fill_next", "mgl_style", "mgl_slot", "mg_join"]
+    t = Tab("MANGLE", [("MANGLE", keys)], 1111)
+    t.panel(14, 64, 1252, 300, "THE BAR")
+    t.readout("mg_info", 640, 122, 1180, 36, tsize=20)
+    n = 17   # 16 steps and the tap row's "None", which sits under the END plate
+    pitch = MG_CELL_W + MG_GAP
+    x0 = 640 - (n * MG_CELL_W + (n - 1) * MG_GAP) // 2
+    cy = 238
+    for i in range(16):
+        cx = x0 + i * pitch + MG_CELL_W // 2
+        t.column("mg_c%02d" % (i + 1), cx, cy, MG_CELL_W, MG_CELL_H, "mangle_cell", mangle_cell_frames)
+        t.text(cx, cy + MG_CELL_H // 2 + 14, str(i + 1), size=15)
+    t.engraved(x0 + 16 * pitch + MG_CELL_W // 2, cy, "END", 14)
+    t.add(dict(kind="taps", key="mg_tap", cx=640, cy=cy, n=n, sw=MG_CELL_W, sh=MG_CELL_H, flash=True))
+
+    t.panel(14, 374, 760, 240, "PAINT")
+    t.keys("mg_brush", 394, 442, MG_SHORT, 80, 60, name="MOVE (TAP A STEP TO PAINT IT, AGAIN FOR THRU)", label_size=15)
+    t.toggle("mg_join", 104, 548, "JOIN", w=140, h=64, label_size=18)
+    t.button("mg_clear", 254, 548, "CLEAR", w=140, h=64)
+    t.button("mg_rand", 412, 548, "RANDOM-\nIZE", w=156, h=64, label_size=15)
+    t.button("mg_mutate", 568, 548, "MUTATE", w=140, h=64)
+    t.button("mg_revert", 704, 548, "UNDO", w=110, h=64)
+
+    t.panel(786, 374, 480, 240, "PLAY")
+    t.toggle("mgl_on", 862, 430, "MANGLE\nON", w=130, h=62, label_size=15)
+    t.toggle("mgl_hold", 1008, 430, "HOLD", w=130, h=62)
+    t.button("mgl_fill_next", 1158, 430, "FILL\nNEXT", w=150, h=62, label_size=15)
+    t.keys("mgl_steps", 886, 522, ["4", "8", "16"], 56, 46, name="STEPS", label_size=16)
+    t.keys("mgl_style", 1102, 522, ["GENTLE", "MED", "WILD"], 84, 46, name="RANDOMIZE STYLE", label_size=14)
+    t.keys("mgl_slot", 894, 582, ["A", "B", "C", "D"], 46, 40, label_size=15)
+    t.toggle("mgl_chain", 1124, 582, "CHAIN SLOTS", w=196, h=40, label_size=15)
+    return t
+
+
+def tab_mangle_fx():
+    keys = ["mgl_mix", "mgl_amount", "mgl_fill_every", "mgl_steps", "mgl_tex_amount", "mgl_tex_size", "mgl_tex_density",
+            "mgl_tex_scatter", "mgl_space_time", "mgl_space_fb", "mgl_space_amount", "mgl_target", "mg_preset", "mg_pads"]
+    t = Tab("MANGLE FX", [("MANGLE FX", keys)], 1212 + 1)
+    t.panel(14, 64, 640, 300, "TEXTURE")
+    t.keys("mgl_tex_mode", 284, 126, ["OFF", "TIGHT", "SCATTER", "CLOUD", "REVERSE"], 96, 50, label_size=14)
+    for i, (k, lab) in enumerate([("mgl_tex_amount", "AMOUNT"), ("mgl_tex_size", "SIZE"), ("mgl_tex_density", "DENSITY"),
+                                  ("mgl_tex_scatter", "SCATTER")]):
+        t.knob(k, 90 + i * 132, 250, 38, lab, bw=112)
+    t.toggle("mgl_lock_tex", 590, 126, "LOCK", w=86, h=50, label_size=14)
+    t.panel(666, 64, 600, 300, "SPACE")
+    t.keys("mgl_space_mode", 914, 126, ["OFF", "ECHO", "PING-PONG", "DIFFUSE"], 112, 50, label_size=14)
+    for i, (k, lab) in enumerate([("mgl_space_time", "TIME"), ("mgl_space_fb", "FEEDBACK"), ("mgl_space_amount", "AMOUNT")]):
+        t.knob(k, 776 + i * 170, 250, 40, lab, bw=130)
+    t.toggle("mgl_lock_space", 1212, 126, "LOCK", w=86, h=50, label_size=14)
+    t.panel(14, 374, 640, 240, "OUTPUT")
+    t.keys("mgl_target", 334, 432, ["MASTER", "A", "B", "C", "D"], 84, 46, name="MANGLES", label_size=14)
+    t.knob("mgl_mix", 90, 540, 34, "MIX", bw=100)
+    t.knob("mgl_amount", 210, 540, 34, "AMOUNT", bw=100)
+    t.keys("mgl_fill_every", 452, 530, ["OFF", "2", "4", "8", "16"], 56, 44, name="FILL EVERY (BARS)", label_size=14)
+    t.keys("mgl_fill_len", 452, 588, ["BAR", "HALF"], 80, 36, label_size=14)
+    t.panel(666, 374, 600, 240, "PRESETS")
+    t.knob("mg_preset", 750, 488, 40, "PRESET", value=False)
+    t.readout("mg_preset", 1000, 440, 380, 44, tsize=20)
+    t.button("mg_load", 900, 512, "LOAD", w=150, h=56)
+    t.button("mg_save", 1080, 512, "SAVE", w=150, h=56)
+    t.toggle("mg_pads", 1000, 580, "PADS PAINT STEPS", w=380, h=42, label_size=15)
+    return t
+
+
 def build():
     out = Out()
     Image.new("RGBA", (4, 4), (0, 0, 0, 0)).save(os.path.join(ART, "clear.png"))
@@ -1263,7 +1373,7 @@ def build():
                  ("seg_inactive", "0e1211"), ("seg_active_tx", "0e1211"), ("box", "0c0806")):
         out.lines.append("theme_%s=%s" % (k, v))
     tiles = []
-    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_autoslice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_macros, tab_mixer, tab_setup):
+    for make in (tab_kit, tab_pad, tab_samples, tab_slice, tab_autoslice, tab_steps, tab_sequencer, tab_fx, tab_fx_edit, tab_mangle, tab_mangle_fx, tab_macros, tab_mixer, tab_setup):
         tab = make()
         bg = render(tab, out)
         tiles.append(bg)

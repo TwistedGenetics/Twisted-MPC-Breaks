@@ -541,6 +541,59 @@ int main(void) {
     printf("     status after LOAD KIT: '%s'\n", text);
     CHECK(strlen(text) > 0, "status shows something after a kit load");
 
+    /* 5b. MANGLE: paint steps by tap, JOIN a run, the bar length, pads paint steps, presets, CLEAR */
+    {
+        #define MG_TRIG(k) do { a->setP(a, idx(k), 1); run(a, 4); a->setP(a, idx(k), 0); settle(a, 250); } while (0)
+        #define CELL(n) ((int) lroundf(plain(a, n)) & ~1)
+        /* the kit LOAD above finishes on the worker (and brings the kit's MANGLE settings): let it land first */
+        for (int t = 0; t < 50; t++) { display(a, "kit_info", text); if (strstr(text, "PLAYING:") && !strstr(text, "LOADING")) break; settle(a, 100); }
+        settle(a, 500);
+        set_plain(a, "mgl_steps", 2); run(a, 4); settle(a, 150);   /* 16 steps */
+        MG_TRIG("mg_clear");
+        CHECK(CELL("mg_c03") == 0, "MANGLE: CLEAR leaves step 3 THRU (%d)", CELL("mg_c03"));
+        set_plain(a, "mg_brush", 2); run(a, 2);           /* Reverse */
+        set_plain(a, "mg_tap", 2); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c03") == 8, "a tap on step 3 paints REVERSE there (cell %d)", CELL("mg_c03"));
+        CHECK(lroundf(plain(a, "mg_tap")) == 16, "the tap row goes back to None (%.0f)", plain(a, "mg_tap"));
+        set_plain(a, "mg_tap", 2); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c03") == 0, "a second tap puts it back to THRU (cell %d)", CELL("mg_c03"));
+        set_plain(a, "mg_brush", 1); set_plain(a, "mg_join", 1); run(a, 2);
+        set_plain(a, "mg_tap", 4); run(a, 4); settle(a, 250);
+        display(a, "mg_info", text);
+        CHECK(strstr(text, "JOIN FROM STEP 5") != NULL, "JOIN waits for the last step ('%s')", text);
+        set_plain(a, "mg_tap", 7); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c05") == 4 && CELL("mg_c08") == 6, "JOIN paints steps 5-8 as one REPEAT run (%d %d)", CELL("mg_c05"), CELL("mg_c08"));
+        CHECK(lroundf(plain(a, "mg_join")) == 0, "and JOIN switches itself off");
+        display(a, "mg_info", text);
+        printf("     mangle: '%s'\n", text);
+        CHECK(strstr(text, "4 OF 16 STEPS MANGLED") != NULL, "the info line counts the mangled steps ('%s')", text);
+        set_plain(a, "mgl_steps", 0); run(a, 2); settle(a, 250);
+        CHECK(lroundf(plain(a, "mg_c05")) == 36, "with a 4-step bar, step 5 shows as past the end (%.0f)", plain(a, "mg_c05"));
+        set_plain(a, "mgl_steps", 2); run(a, 2);
+        /* pads paint steps: the pad's note doesn't play, it paints */
+        MG_TRIG("mg_clear");
+        set_plain(a, "mg_pads", 1); set_plain(a, "mg_brush", 3); run(a, 2);   /* Half */
+        note(a, 1, 37, 100); run(a, 4); note(a, 0, 37, 0); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c02") == 12, "PADS PAINT STEPS: pad 02 paints step 2 (cell %d)", CELL("mg_c02"));
+        note(a, 1, 39, 100); run(a, 2); note(a, 1, 42, 100); run(a, 2);
+        note(a, 0, 42, 0); run(a, 2); note(a, 0, 39, 0); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c04") == 12 && CELL("mg_c07") == 14, "hold pad 04, hit pad 07: steps 4-7 joined (%d %d)", CELL("mg_c04"), CELL("mg_c07"));
+        set_plain(a, "mg_pads", 0); run(a, 2);
+        /* presets: SAVE writes one, a factory preset loads */
+        MG_TRIG("mg_save");
+        display(a, "status", text);
+        CHECK(strstr(text, "SAVED MPC MANGLE") != NULL, "MANGLE SAVE writes a preset ('%s')", text);
+        set_plain(a, "mg_preset", 0); run(a, 2); settle(a, 150);
+        display(a, "mg_preset", text2);
+        CHECK(strchr(text2, ':') != NULL, "the preset knob names a factory preset ('%s')", text2);
+        MG_TRIG("mg_load");
+        display(a, "status", text);
+        CHECK(strstr(text, "MANGLE PRESET:") != NULL, "LOAD applies it ('%s')", text);
+        MG_TRIG("mg_clear");
+        #undef MG_TRIG
+        #undef CELL
+    }
+
     /* 6. close both */
     if (b) { b->d(b, effMainsChanged, 0, 0, NULL, 0); b->d(b, effClose, 0, 0, NULL, 0); }
     a->d(a, effMainsChanged, 0, 0, NULL, 0);

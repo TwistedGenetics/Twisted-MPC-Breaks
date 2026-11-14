@@ -6,7 +6,8 @@ Gen1 standalone MPCs (One, Live, Live II, X, Key 61) and the Force.
 
 It is the real Twisted Breaks engine, the same code as the Mac plugin (pinned as a submodule), not a
 rewrite: the kits, slicing, SWAP groups, the 32-step sequencer, MUTATE, snapshots, the 16 performance
-effects, macros, AKAIZER and the vintage character modes all come along. MPC draws its page from a skin and
+effects, macros, AKAIZER, the vintage character modes and (since 1.7) MANGLE, the bar-mangling sequencer from
+Twisted Breaks 0.30, all come along. MPC draws its page from a skin and
 the Q-Links drive it.
 
 > **Status: untested on hardware.** It builds, and passes offline tests that drive it through the same calls
@@ -37,6 +38,8 @@ the Q-Links drive it.
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects; a red lamp over each lights while it is on (from a key, a pad held, or latched) |
 | FX EDIT | Pick an effect: its settings (e.g. LPF cutoff / res / drive) on three knobs, KEY MODE (HOLD: on while the pad is held; LATCH: a hit turns it on, the next off), EFFECT ON, the group |
+| MANGLE | The bar as 16 step cells (THRU, REPEAT, REVERSE, HALF, STOP, DOUBLE, SCRATCH, FREEZE, SHUFFLE; a white bar marks the step playing, hatched cells are past the bar's length). Pick a MOVE, tap a step to paint it (tap again: back to THRU); JOIN, then tap the first and last step, makes one run. CLEAR, RANDOMIZE (listens to the next bar, then writes a pattern in the chosen STYLE), MUTATE, UNDO. MANGLE ON, HOLD, FILL NEXT, STEPS 4 / 8 / 16, SLOT A–D and CHAIN SLOTS |
+| MANGLE FX | TEXTURE (tight, scatter, cloud, reverse grains: amount, size, density, scatter, LOCK) and SPACE (echo, ping-pong, diffuse: time, feedback, amount, LOCK); what it mangles (master or a group), MIX, AMOUNT, FILL EVERY 2–16 bars, a bar or half; presets (the 16 factory ones and your own: SAVE writes "MPC MANGLE 001"…, `.tbmangle` files the Mac also reads); **PADS PAINT STEPS** |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |
 | MIXER | Group A–D levels and mutes |
 | SETUP | FOLLOW HITS (a hit selects its pad); hitting a playing SWAP pad again: IGNORE (default) or STOP; which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
@@ -60,6 +63,10 @@ the Q-Links drive it.
 - **Tight chops**: AUTO SLICE, then on SLICE pick a slice, ZOOM 25 ms, NUDGE until it sits right (each nudge plays the
   slice), or TIGHTEN to put it on the start of its hit. TIGHTEN ALL does every marker. The MPC's screen sends a drag
   as small nudges, not a position, so a marker is moved by nudges, the MOVE knob, or a tap in MOVE mode.
+- **MANGLE with the pads**: switch on PADS PAINT STEPS (MANGLE FX page) and pads 01–16 are the bar's steps, like
+  on the Mikro: hit a pad to paint the selected move there (again: THRU), hold one pad and hit another to join the steps
+  between them. The pads don't play sounds while it is on. MANGLE presets made on the Mac (`.tbmangle`) go in
+  `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Mangle/`.
 - **Which control am I on?** The control you touch gets an amber frame; the data wheel then turns that one.
 - **Pads**: notes 36–51 play pads 01–16 by default (change it on SETUP); notes 60–75 play the FX group's effects.
 - **Why does pad 01 sound slowed down / pitched?** The factory kit's break is a 170 BPM loop with TEMPO SYNC on,
@@ -88,7 +95,7 @@ the Q-Links drive it.
 ## Build
 GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 - **Offline tests**: the plugin for x86 under ASan/UBSan, driven by the toolkit's host test and
-  `tests/tbm_test.c` (kits, pads, slicing, the sample browser, steps, pad notes + LEARN, SAVE KIT, the pattern from the song position, state save/restore, several instances).
+  `tests/tbm_test.c` (kits, pads, slicing, the sample browser, MANGLE painting / joins / pads / presets, steps, pad notes + LEARN, SAVE KIT, the pattern from the song position, state save/restore, several instances).
 - **MPC plugin**: cross-compiled with the toolchain that matches MPC OS 3.10 (below), checked (exports, glibc no newer
   than 2.39, no dynamic libstdc++, libraries), skin built, packaged as the installer zip. Builds of `main` are
   published under Releases.
@@ -115,8 +122,10 @@ and publishes release [`toolchain-az01-g1-3.10`](../../releases/tag/toolchain-az
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.6)
+## Known limits (1.7)
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
+- MANGLE's TEXTURE (grains) and SPACE add CPU on top of the break: check the MPC's CPU meter with CLOUD at high
+  density before relying on it live.
 - Untested on hardware: CPU load, how smoothly the MPC redraws the slice screen and the STEPS playhead, and the
   skin's readability need a device check.
 - A project remembers where each pad's sample lives (a drive, a folder): keep the card or stick in, or SAVE KIT
