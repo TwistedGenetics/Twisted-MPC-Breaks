@@ -354,7 +354,7 @@ int main(void) {
     a->setP(a, idx("sl_nr1"), 1); run(a, 2); a->setP(a, idx("sl_nr1"), 0); settle(a, 250);
     float one = marker_ms(a) - orig;
     CHECK(one > 0.2f && one < 0.6f, "at 25 ms, one nudge moves the marker %.2f ms", one);
-    for (int i = 0; i < 2; i++) { a->setP(a, idx("sl_nr2"), 1); run(a, 2); a->setP(a, idx("sl_nr2"), 0); settle(a, 200); }
+    for (int i = 0; i < 2; i++) { a->setP(a, idx("sl_nr2"), 1); run(a, 2); a->setP(a, idx("sl_nr2"), 0); settle(a, 300); }   /* the wrapper merges presses <250 ms apart */
     float moved = marker_ms(a);
     printf("     marker %.1f ms -> nudged to %.1f ms\n", orig, moved);
     CHECK(moved - orig > 5.0f, "the x8 nudges move it on (%.1f ms)", moved - orig);
@@ -406,6 +406,7 @@ int main(void) {
     for (const char *c = "JUNGLE 11"; *c; c++) {
         if (*c == ' ') { a->setP(a, idx("kit_space"), 1); run(a, 2); a->setP(a, idx("kit_space"), 0); run(a, 2); continue; }
         set_plain(a, "kit_key", (float)(strchr(keys, *c) - keys)); run(a, 10);   /* back to None between keys */
+        if (c[1] == *c) settle(a, 220);   /* the same key again: a person's second tap, not one tap arriving twice (<180 ms) */
     }
     a->setP(a, idx("kit_bksp"), 1); run(a, 2); a->setP(a, idx("kit_bksp"), 0); settle(a, 200);
     display(a, "kit_name", text);
@@ -557,6 +558,12 @@ int main(void) {
         CHECK(lroundf(plain(a, "mg_tap")) == 16, "the tap row goes back to None (%.0f)", plain(a, "mg_tap"));
         set_plain(a, "mg_tap", 2); run(a, 4); settle(a, 250);
         CHECK(CELL("mg_c03") == 0, "a second tap puts it back to THRU (cell %d)", CELL("mg_c03"));
+        /* Live III: one tap can arrive as two presses ~100 ms apart: still one tap (painted, not painted and undone) */
+        set_plain(a, "mg_brush", 2); run(a, 2);
+        set_plain(a, "mg_tap", 9); run(a, 2); settle(a, 100); set_plain(a, "mg_tap", 9); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c10") == 8, "a tap that arrives twice paints step 10 once (cell %d)", CELL("mg_c10"));
+        set_plain(a, "mg_tap", 9); run(a, 4); settle(a, 250);
+        CHECK(CELL("mg_c10") == 0, "a real second tap later puts it back to THRU (cell %d)", CELL("mg_c10"));
         set_plain(a, "mg_brush", 1); set_plain(a, "mg_join", 1); run(a, 2);
         set_plain(a, "mg_tap", 4); run(a, 4); settle(a, 250);
         display(a, "mg_info", text);

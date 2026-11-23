@@ -142,29 +142,157 @@ jobs:
           tools/ci_run.sh "Skin preview" tools/in_renderer.sh python3 $MV/tools/studio.py preview "vst/build/skin/Twisted Genetics - VST - Twisted Breaks/Plugin Skins" -o skin-preview/page_%d.png
           (cd skin-preview && zip -q ../TwistedBreaks-MPC-skin-preview.zip *.png)
 
-      - name: Package
+      - name: Hand the build to the packaging job
         run: |
-          VERSION=$(sed -n 's/^project(TwistedMpcBreaks VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          tools/ci_run.sh Package python3 external/mpc-vst-plugins/tools/release.py \
-            --so build-arm/twistedbreaks.so \
-            --skin "vst/build/skin/Twisted Genetics - VST - Twisted Breaks" \
-            --entry vst/build/pluginlist-entry.xml \
-            --version "$VERSION" \
-            --user-data data \
-            --about "Twisted Breaks: the jungle / drum & bass break sampler, sequencer and FX, as an MPC plugin." \
-            -o dist
-          ls -l dist
+          mkdir -p handoff
+          cp build-arm/twistedbreaks.so handoff/
+          tar cf handoff/skin.tar vst/build/skin vst/build/pluginlist-entry.xml
+          cp TwistedBreaks-MPC-skin-preview.zip handoff/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TwistedBreaks-MPC-armv7
-          path: dist/*.zip
+          name: build-armv7
+          path: handoff/
 
       - uses: actions/upload-artifact@v4
         with:
           name: skin-preview
           path: skin-preview/
+
+  # ---------------------------------------------------------------------------
+  # Gen2 MPCs (Live III, XL, One G2, Key 37 G2) are aarch64 with a 64-bit-only
+  # userland: they need their own build. Ubuntu 24.04's cross GCC 13 links
+  # against glibc 2.39, the same as Gen2's MPC OS 3.x.
+  # ---------------------------------------------------------------------------
+  mpc-aarch64:
+    name: MPC plugin (aarch64, Gen2 MPC)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev x11proto-dev g++-aarch64-linux-gnu
+          echo "::notice title=Toolchain::$(aarch64-linux-gnu-g++ --version | head -1)"
+
+      - name: X11 headers for the cross build
+        run: |
+          mkdir -p x11inc
+          cp -r /usr/include/X11 x11inc/
+
+      - name: Cache downloads (JUCE, FreeType)
+        uses: actions/cache@v4
+        with:
+          path: build-a64/_deps
+          key: deps-juce-8.0.4-ft-2.13.3-a64
+
+      - name: Configure
+        run: |
+          tools/ci_run.sh "Configure (aarch64)" cmake -S . -B build-a64 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-gen2.cmake \
+            -DTBM_X11_INCLUDE="$PWD/x11inc" -DTBM_HOST_TEST=OFF
+
+      - name: Build
+        run: tools/ci_run.sh "Build (aarch64)" cmake --build build-a64 -j 4
+
+      - name: Check the library
+        run: |
+          SO=build-a64/twistedbreaks.so
+          aarch64-linux-gnu-strip "$SO"
+          file "$SO"
+          file "$SO" | grep -q 'ARM aarch64' || { echo "::error::not an aarch64 library"; exit 1; }
+          echo "::notice title=Library (aarch64)::$(ls -l "$SO")"
+          echo "::notice title=Library (aarch64)::needs: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')"
+          exported=$(readelf --dyn-syms -W "$SO" | grep -E ' GLOBAL .* [0-9]+ [A-Za-z]' | grep -v UND | awk '{print $8}' | tr '\n' ' ')
+          [ "$exported" = "VSTPluginMain " ] || { echo "::error::exports more than VSTPluginMain: $exported"; exit 1; }
+          glibc=$(readelf -V "$SO" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "::notice title=Library (aarch64)::highest glibc: $glibc (Gen2 MPC OS 3.x has 2.39)"
+          [ "$(printf '%s\nGLIBC_2.39\n' "$glibc" | sort -V | tail -1)" = GLIBC_2.39 ] || { echo "::error::needs $glibc, newer than Gen2's 2.39"; exit 1; }
+          if readelf -V "$SO" | grep -q 'GLIBCXX_'; then echo "::error::links libstdc++ dynamically"; exit 1; fi
+          for n in $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/'); do
+            case "$n" in libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-aarch64.so.1) ;;
+              *) echo "::error::needs $n, which an MPC may not have"; exit 1 ;;
+            esac
+          done
+
+      - name: Loads and plays under qemu (aarch64)
+        run: |
+          sudo apt-get install -y qemu-user libc6-arm64-cross
+          cat > /tmp/load.c <<'C'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          int main(int c, char **v) {
+            void *h = dlopen(v[1], RTLD_NOW | RTLD_LOCAL);
+            if (!h) { printf("dlopen: %s\n", dlerror()); return 1; }
+            void *(*m)(void *) = (void *(*)(void *)) dlsym(h, "VSTPluginMain");
+            if (!m) { printf("no VSTPluginMain\n"); return 1; }
+            printf("loaded, VSTPluginMain at %p\n", (void *) m);
+            return 0;
+          }
+          C
+          aarch64-linux-gnu-gcc -o /tmp/load /tmp/load.c -ldl
+          qemu-aarch64 -L /usr/aarch64-linux-gnu /tmp/load "$PWD/build-a64/twistedbreaks.so"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-aarch64
+          path: build-a64/twistedbreaks.so
+
+  # ---------------------------------------------------------------------------
+  # One release for every MPC: a zip per build (installer, MPC OS 3.9.x) and one
+  # folder for MPC OS 3.10.1's VST2 Plugins folder with both binaries in it.
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package and release
+    needs: [offline-tests, mpc-armv7, mpc-aarch64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-armv7
+          path: in/armv7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-aarch64
+          path: in/aarch64
+
+      - name: Package
+        run: |
+          VERSION=$(sed -n 's/^project(TwistedMpcBreaks VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          tar xf in/armv7/skin.tar
+          MV=external/mpc-vst-plugins
+          for arch in armv7 aarch64; do
+            tools/ci_run.sh "Package ($arch)" python3 $MV/tools/release.py \
+              --so in/$arch/twistedbreaks.so \
+              --skin "vst/build/skin/Twisted Genetics - VST - Twisted Breaks" \
+              --entry vst/build/pluginlist-entry.xml \
+              --version "$VERSION" \
+              --user-data data \
+              --repo TwistedGenetics/Twisted-MPC-Breaks \
+              --about "Twisted Breaks: the jungle / drum & bass break sampler, sequencer and FX, as an MPC plugin." \
+              -o dist
+          done
+          A7=$(ls dist/*-mpc-armv7.zip); A64=$(ls dist/*-mpc-aarch64.zip)
+          # MPC OS 3.10.1+: one folder with both binaries, to copy into VST2 Plugins on any MPC
+          tools/ci_run.sh "SDK folder zip" python3 $MV/tools/sdk_zip.py "dist/Twisted-Breaks-$VERSION-mpc-sdk.zip" "$A7" "$A64"
+          python3 $MV/tools/catalog_check.py "$A7" "$A64" || echo "::warning::catalog_check reported problems (advisory)"
+          cp in/armv7/TwistedBreaks-MPC-skin-preview.zip .
+          unzip -l "dist/Twisted-Breaks-$VERSION-mpc-sdk.zip" | head -20
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TwistedBreaks-MPC
+          path: dist/*.zip
 
       # Every green build of main becomes a downloadable Release (repo front page -> Releases).
       - name: Publish release
@@ -179,5 +307,7 @@ jobs:
             --latest \
             --notes "$(git log -1 --pretty=%B)
 
-          Untested on hardware yet. Needs an SSH-enabled Gen1 MPC (One, Live, Live II, X, Key 61) or Force on MPC OS 3.x.
-          Install: drop the zip into the community MPC plugin installer (sd88me/mpc-vst-plugins), or unzip it and follow INSTALL.md."
+          Which file:
+          - MPC OS 3.10.1 or later, any MPC (Gen1 or Gen2): Twisted-Breaks-${VERSION}-mpc-sdk.zip. Turn on Preferences > Enhancements > Enable Enhancements and External Plugin Support, unzip, copy the 'Twisted Genetics - VST - Twisted Breaks' folder into 'VST2 Plugins' at the top of the internal drive or a USB / SD drive, restart.
+          - Older MPC OS with the community installer: -mpc-armv7.zip for Gen1 (One, Live, Live II, X, Key 61, Force), -mpc-aarch64.zip for Gen2 (Live III, XL, One G2, Key 37 G2).
+          Untested on hardware yet."

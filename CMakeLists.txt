@@ -14,7 +14,7 @@
 #  here because nothing opens a window).
 # =============================================================================
 cmake_minimum_required(VERSION 3.22)
-project(TwistedMpcBreaks VERSION 1.7.1 LANGUAGES C CXX)
+project(TwistedMpcBreaks VERSION 1.8.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -160,19 +160,14 @@ add_custom_command(OUTPUT ${PARAMS_H}
     COMMENT "params.h from vst/params.json")
 add_custom_target(tbm_params DEPENDS ${PARAMS_H})
 
-# The wrapper keeps the plugin state (a project's save) in a fixed 8 KB text
-# buffer; Twisted Breaks' state (patterns, slices, snapshots) is larger. Build a
-# copy with the buffer size set here. Fails loudly if the wrapper changes.
+# The wrapper keeps the plugin state (a project's save) in a STATE_MAX-byte buffer, 8 KB by default; Twisted Breaks'
+# state (patterns, slices, snapshots, MANGLE) is larger, so the wrapper is built with a bigger one.
 set(WRAP_SRC ${MV_DIR}/wrapper/vst2_wrap.c)
-set(WRAP_PATCHED ${CMAKE_CURRENT_BINARY_DIR}/vst2_wrap_tbm.c)
 file(READ ${WRAP_SRC} WRAP_TEXT)
-string(FIND "${WRAP_TEXT}" "char chunk[8192];" WRAP_AT)
+string(FIND "${WRAP_TEXT}" "#ifndef STATE_MAX" WRAP_AT)
 if(WRAP_AT EQUAL -1)
-    message(FATAL_ERROR "vst2_wrap.c no longer has 'char chunk[8192];': check its state handling and update this patch")
+    message(FATAL_ERROR "vst2_wrap.c no longer takes STATE_MAX: check its state handling")
 endif()
-string(REPLACE "char chunk[8192];" "char chunk[TBM_CHUNK_MAX];" WRAP_TEXT "${WRAP_TEXT}")
-file(WRITE ${WRAP_PATCHED}.tmp "${WRAP_TEXT}")
-configure_file(${WRAP_PATCHED}.tmp ${WRAP_PATCHED} COPYONLY)
 set(TBM_CHUNK_MAX 4194304)   # 4 MB: compressed state of a full kit with every pattern is far smaller
 
 # -----------------------------------------------------------------------------
@@ -190,11 +185,10 @@ target_compile_options(tbm_objs PRIVATE
     -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>)
 
-add_library(tbm_wrap OBJECT ${WRAP_PATCHED})
+add_library(tbm_wrap OBJECT ${WRAP_SRC})
 add_dependencies(tbm_wrap tbm_params)
-set_source_files_properties(${WRAP_PATCHED} PROPERTIES LANGUAGE C)
 target_include_directories(tbm_wrap PRIVATE ${VST_DIR}/build ${MV_DIR}/wrapper)
-target_compile_definitions(tbm_wrap PRIVATE TBM_CHUNK_MAX=${TBM_CHUNK_MAX})
+target_compile_definitions(tbm_wrap PRIVATE STATE_MAX=${TBM_CHUNK_MAX})
 target_compile_options(tbm_wrap PRIVATE -std=gnu11 -fvisibility=hidden)
 
 if(TBM_SANITIZE)
@@ -228,6 +222,7 @@ if(TBM_HOST_TEST AND NOT CMAKE_CROSSCOMPILING)
     add_dependencies(toolkit_host_test tbm_params)
     target_include_directories(toolkit_host_test PRIVATE ${VST_DIR}/build)
     target_compile_options(toolkit_host_test PRIVATE -std=gnu11)
+    target_compile_definitions(toolkit_host_test PRIVATE STATE_MAX=${TBM_CHUNK_MAX})
     target_link_libraries(toolkit_host_test PRIVATE twistedbreaks m pthread)
     set_target_properties(toolkit_host_test PROPERTIES BUILD_RPATH "$ORIGIN")
 

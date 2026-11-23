@@ -2,7 +2,8 @@
 
 [Twisted Breaks](https://github.com/TwistedGenetics/Twisted-Breaks), the jungle / drum & bass break sampler,
 sequencer and performance-FX instrument, running **inside the MPC's own software** as a native plugin on
-Gen1 standalone MPCs (One, Live, Live II, X, Key 61) and the Force.
+standalone MPCs: Gen1 (One, Live, Live II, X, Key 61, Key 37, the Force) and, since 1.8, Gen2 (Live III, XL, One G2,
+Key 37 G2).
 
 It is the real Twisted Breaks engine, the same code as the Mac plugin (pinned as a submodule), not a
 rewrite: the kits, slicing, SWAP groups, the 32-step sequencer, MUTATE, snapshots, the 16 performance
@@ -13,17 +14,27 @@ the Q-Links drive it.
 > **Status: untested on hardware.** It builds, and passes offline tests that drive it through the same calls
 > MPC makes. The first device test is next.
 
-## What you need
-- A **Gen1** MPC or Force with **SSH enabled** (an SSH-modded MPC OS image), on **MPC OS 3.x**.
-  Gen2 devices (Live III and later) are locked down and are not supported.
-- The community MPC plugin installer from
-  [sd88me/mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins) (Mac / Windows / Linux), or SSH.
+## Install: MPC OS 3.10.1 or later (any MPC, no SSH)
+MPC OS 3.10.1 loads third-party plugins officially.
+1. On the MPC: **Menu > Preferences > Enhancements**: turn on **Enable Enhancements**, then **External Plugin
+   Support** (read the warning). Wait a few seconds so the setting is saved.
+2. Download **`Twisted-Breaks-…-mpc-sdk.zip`** from **Releases** (one folder for every MPC: it holds both the
+   Gen1 and the Gen2 binary) and unzip it on your computer.
+3. Copy the folder **`Twisted Genetics - VST - Twisted Breaks`** into a folder called **`VST2 Plugins`** at the top
+   of the MPC's internal drive or of a USB stick / SD card (make `VST2 Plugins` if it isn't there). Keep the
+   folder's name as it is.
+4. Restart the MPC. **Twisted Breaks** is in the plugin browser under **External Plugins**. It starts with the
+   factory jungle kit loaded (a break on pad 01, hits on 02–07 and a starter pattern that plays when you press PLAY).
 
-## Install
-1. Download `TwistedBreaks-…-mpc-armv7.zip` from **Releases**.
-2. Drop the zip into the MPC plugin installer and install, or unzip it and follow its `INSTALL.md`.
-3. On the MPC: add **Twisted Breaks** to a plugin track. It starts with the factory jungle kit loaded
-   (a break on pad 01, hits on 02–07 and a starter pattern that plays when you press PLAY).
+The plugin keeps its kits and presets in a `data` folder inside its own folder, wherever you put it.
+
+## Install: older MPC OS (3.x before 3.10.1, SSH-enabled)
+- The community installer from [open-mpc/mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins), or SSH.
+- `Twisted-Breaks-…-mpc-armv7.zip` for Gen1 MPCs and the Force, `Twisted-Breaks-…-mpc-aarch64.zip` for Gen2.
+  Drop it into the installer, or unzip it and follow its `INSTALL.md`.
+
+A Gen1 zip won't load on a Gen2 MPC (its MPC OS is 64-bit only) and the other way round; the `-mpc-sdk.zip` folder
+has both, and MPC picks the right one.
 
 ## On the MPC
 
@@ -66,7 +77,9 @@ the Q-Links drive it.
 - **MANGLE with the pads**: switch on PADS PAINT STEPS (MANGLE FX page) and pads 01–16 are the bar's steps, like
   on the Mikro: hit a pad to paint the selected move there (again: THRU), hold one pad and hit another to join the steps
   between them. The pads don't play sounds while it is on. MANGLE presets made on the Mac (`.tbmangle`) go in
-  `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Mangle/`.
+  `data/Presets/Mangle/` in the plugin's folder.
+- **Gen2 (Live III, XL)**: a tap on the touch screen can reach a plugin twice, 30-140 ms apart. Buttons, the naming
+  keyboard, the MANGLE steps, the wave and the sample list take that as one tap; the same key tapped again by hand counts.
 - **Q-Links**: each page has its own bank, continuous controls first. On an MPC One (4 knobs) the Q-Link button steps
   through columns of four, and the column the knobs drive is outlined. KIT: level, crossfader, kit, scene. SEQUENCER:
   mutate amount, length, step, snapshot. MANGLE FX: texture amount, size, space time, space amount. MACROS: amount,
@@ -80,7 +93,8 @@ the Q-Links drive it.
 - **Timing** follows the MPC's transport: the sequencer, synced loops, SWAP hand-offs and quantised FX lock to
   the MPC's tempo and song position.
 - **Kits from the Mac**: save a kit in Twisted Breaks' preset browser (`.tbkit`, samples included) and copy it
-  to `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/data/Presets/Kits/` on the MPC. It shows in the KIT
+  to `data/Presets/Kits/` inside the plugin's folder on the MPC (`VST2 Plugins/Twisted Genetics - VST - Twisted Breaks/`
+  on MPC OS 3.10.1, `/sdcard/Synths/Twisted Genetics - VST - Twisted Breaks/` with the older installer). It shows in the KIT
   list as soon as you turn the KIT knob. The installer keeps the `data` folder when you update the plugin.
 - **Projects**: everything is saved in the MPC project (pads, slices, steps, patterns, snapshots, FX, pad notes).
 
@@ -101,9 +115,12 @@ the Q-Links drive it.
 GitHub Actions builds everything on every push (`.github/workflows/build.yml`):
 - **Offline tests**: the plugin for x86 under ASan/UBSan, driven by the toolkit's host test and
   `tests/tbm_test.c` (kits, pads, slicing, the sample browser, MANGLE painting / joins / pads / presets, steps, pad notes + LEARN, SAVE KIT, the pattern from the song position, state save/restore, several instances).
-- **MPC plugin**: cross-compiled with the toolchain that matches MPC OS 3.10 (below), checked (exports, glibc no newer
-  than 2.39, no dynamic libstdc++, libraries), skin built, packaged as the installer zip. Builds of `main` are
-  published under Releases.
+- **Gen1 plugin (armv7)**: cross-compiled with the toolchain that matches MPC OS 3.10 (below), checked (exports, glibc no newer
+  than 2.39, no dynamic libstdc++, libraries), skin built.
+- **Gen2 plugin (aarch64)**: cross-compiled with Ubuntu 24.04's `g++-aarch64-linux-gnu` (GCC 13, glibc 2.39, Gen2's
+  ceiling; `cmake/aarch64-gen2.cmake`), the same checks, and loaded under `qemu-aarch64`.
+- **Package**: a zip per build (installer, `-mpc-armv7.zip` / `-mpc-aarch64.zip`) and `-mpc-sdk.zip`, one folder with both
+  binaries for MPC OS 3.10.1's `VST2 Plugins` folder (the toolkit's `sdk_zip.py`). Builds of `main` are published under Releases.
 
 ### The MPC G1 toolchain (from inMusic's open source release)
 inMusic publishes the Linux side of MPC OS: [inmusic-software/az0x-open-source](https://github.com/inmusic-software/az0x-open-source),
@@ -127,7 +144,7 @@ and publishes release [`toolchain-az01-g1-3.10`](../../releases/tag/toolchain-az
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.7.1)
+## Known limits (1.8)
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
 - MANGLE's TEXTURE (grains) and SPACE add CPU on top of the break: check the MPC's CPU meter with CLOUD at high
   density before relying on it live.

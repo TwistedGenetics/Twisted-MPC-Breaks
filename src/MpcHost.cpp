@@ -528,7 +528,7 @@ namespace
                 }
                 case Kind::own:  setOwnParam (key, idx, in, v); break;
                 case Kind::text:
-                    if (in.text >= tList1 && in.text < tList1 + kList) listTap (in.text - tList1);   // a row touched
+                    if (in.text >= tList1 && in.text < tList1 + kList && ! doubledTap (idx, 0)) listTap (in.text - tList1);   // a row touched
                     break;
                 case Kind::param:
                 case Kind::padParam:
@@ -1586,6 +1586,18 @@ namespace
             return 0.0f;
         }
 
+        /** One tap on a drawn control can reach a plugin as two presses 30-140 ms apart (MPC Live III, toolkit NOTES
+            2026-10-30). The wrapper ignores the second for buttons (momentary params); tap rows (the naming keyboard,
+            the MANGLE steps, the wave, the sample list) are option params that spring back to "None", so the same option
+            again within 180 ms is that second press (it came 30-140 ms after): one tap, one action. A different key at once still counts. */
+        bool doubledTap (int idx, int value)
+        {
+            const auto now = (int64_t) juce::Time::getMillisecondCounter();
+            const int64_t packed = (now << 16) | (value & 0xffff);
+            const int64_t before = lastTap[(size_t) idx].exchange (packed);
+            return before != 0 && (int) (before & 0xffff) == (value & 0xffff) && now - (before >> 16) < 180;
+        }
+
         void setOwnParam (const char* key, int idx, const Info& in, float v)
         {
             const int pad = selectedPad.load();
@@ -1618,7 +1630,7 @@ namespace
                 case Own::kitKey:
                 {
                     const int k = juce::roundToInt (v);
-                    if (k >= 0 && k < kNumKeys) typeName (juce::String::charToString ((juce::juce_wchar) (uint8_t) kKeyChars[k]));
+                    if (k >= 0 && k < kNumKeys && ! doubledTap (idx, k)) typeName (juce::String::charToString ((juce::juce_wchar) (uint8_t) kKeyChars[k]));
                     changed[(size_t) idx].store (true);   // back to "None": the same key types again
                     return;
                 }
@@ -1664,7 +1676,7 @@ namespace
                 case Own::mgTap:
                 {
                     const int st = juce::roundToInt (v);
-                    if (st >= 0 && st < kMgSteps) juce::MessageManager::callAsync ([this, st] { mangleTap (st); refreshInfo(); });
+                    if (st >= 0 && st < kMgSteps && ! doubledTap (idx, st)) juce::MessageManager::callAsync ([this, st] { mangleTap (st); refreshInfo(); });
                     changed[(size_t) idx].store (true);   // back to "None": the same step taps again
                     return;
                 }
@@ -1677,7 +1689,7 @@ namespace
                 case Own::wvTap:
                 {
                     const int c = juce::roundToInt (v);
-                    if (c >= 0 && c < kWaveCols) waveTap (c);
+                    if (c >= 0 && c < kWaveCols && ! doubledTap (idx, c)) waveTap (c);
                     changed[(size_t) idx].store (true);   // back to "None", so the same column can be tapped again
                     return;
                 }
@@ -2492,6 +2504,7 @@ namespace
         std::atomic<float> slSens { 0.5f };
         std::atomic<int>   slCountOption { 2 }, slPosValue { 0 };
         std::atomic<int>   slView { 0 }, slSnap { 2 };
+        std::array<std::atomic<int64_t>, NPARAMS> lastTap {};   // doubledTap()
         // MANGLE
         std::atomic<int>   mgBrush { 1 }, mgJoinStart { -1 }, mgPreset { 0 };
         std::atomic<bool>  mgJoinOn { false }, mgPads { false };
