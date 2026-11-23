@@ -287,6 +287,33 @@ int main(void) {
     a->setP(a, idx("smp_home"), 1); run(a, 2); a->setP(a, idx("smp_home"), 0); settle(a, 400);
     CHECK(find_row(a, "RECENT  Breaks") > 0, "PLACES now lists RECENT Breaks");
 
+    /* 2e1. the data wheel: SCROLL moves the selection, its push (smp_enter) opens a folder and loads a file;
+     * the browser over PAD / STEPS (smp_show) closes once a file is loaded */
+    #define PRESS(k) do { a->setP(a, idx(k), 1); run(a, 4); a->setP(a, idx(k), 0); settle(a, 400); } while (0)
+    set_plain(a, "smp_audition", 0); run(a, 2);   /* (no auditions running on into the tests after) */
+    PRESS("smp_show");
+    CHECK(plain(a, "smp_browse") > 0.5f, "a tap on PAD / SAMPLE opens the browser");
+    row = find_row(a, "RECENT  Breaks");
+    set_plain(a, "smp_file", (float)(row - 1)); settle(a, 300);
+    CHECK(lit_row(a) == row, "the wheel moves the selection onto RECENT Breaks (lit row %d of %d)", lit_row(a), row);
+    PRESS("smp_enter");
+    settle(a, 300);
+    display(a, "smp_path", text);
+    CHECK(strstr(text, "Breaks") != NULL, "the wheel's push opens it ('%s')", text);
+    CHECK(plain(a, "smp_browse") > 0.5f, "opening a folder leaves the browser up");
+    ar = find_row(a, "amen.wav");
+    set_plain(a, "smp_file", (float)(ar - 1)); settle(a, 300);
+    set_plain(a, "pad", 10); run(a, 2);
+    PRESS("smp_enter");
+    for (int i = 0; i < 200; i++) { run(a, 4); usleep(30000); display(a, "pad", text); if (strstr(text, "AMEN")) break; }
+    CHECK(strstr(text, "10") && strstr(text, "AMEN"), "the push on a file loads it onto the pad ('%s')", text);
+    settle(a, 200);
+    CHECK(plain(a, "smp_browse") < 0.5f, "and the browser closes, its job done");
+    PRESS("smp_show"); PRESS("smp_hide");
+    CHECK(plain(a, "smp_browse") < 0.5f, "CLOSE closes it");
+    a->setP(a, idx("smp_clear"), 1); run(a, 4); a->setP(a, idx("smp_clear"), 0); settle(a, 300);   /* pad 10 empty again */
+    set_plain(a, "pad", 9); set_plain(a, "smp_audition", 1); run(a, 2);
+
     /* 2e2. the SLICE screen on pad 9 */
     settle(a, 300);
     display(a, "sl_head", text);
@@ -484,6 +511,24 @@ int main(void) {
     CHECK(peak < 0.01, "STOP: the same hit stops it at the next swap point (peak %.4f)", peak);
     set_plain(a, "swap_rehit", 0); set_plain(a, "sp_swap", 0); set_plain(a, "sp_mode", 0); set_plain(a, "sp_group", 0); set_plain(a, "grp_a_mute", 0); run(a, 2);
     ti.flags = (1 << 10) | (1 << 9); run(a, 40);
+
+    /* 2h. SWAP with the MPC stopped: LATCH (default) - a hit plays on after the pad is let go, a second hit stops it;
+     * WHILE HELD - it stops when let go (Twisted Breaks' own rule with the host stopped) */
+    ti.flags = (1 << 10) | (1 << 9);   /* stopped */
+    set_plain(a, "seq_run", 0);
+    set_plain(a, "pad", 5); set_plain(a, "sp_group", 1); set_plain(a, "grp_a_mute", 1); run(a, 4);
+    set_plain(a, "sp_mode", 1); set_plain(a, "sp_swap", 1); set_plain(a, "sp_swapq", 0); run(a, 4);
+    note(a, 1, 40, 110); run(a, 10); note(a, 0, 40, 0); run(a, 300);
+    peak = 0; run(a, 100);
+    CHECK(peak > 0.01, "LATCH: with the MPC stopped the SWAP loop plays on after the pad is let go (peak %.3f)", peak);
+    note(a, 1, 40, 110); run(a, 4); note(a, 0, 40, 0); run(a, 600);
+    peak = 0; run(a, 100);
+    CHECK(peak < 0.01, "a second hit stops it (stopped MPC: no IGNORE) (peak %.4f)", peak);
+    set_plain(a, "swap_stopped", 1); run(a, 2);
+    note(a, 1, 40, 110); run(a, 10); note(a, 0, 40, 0); run(a, 300);
+    peak = 0; run(a, 100);
+    CHECK(peak < 0.01, "WHILE HELD: it stops when let go (peak %.4f)", peak);
+    set_plain(a, "swap_stopped", 0); set_plain(a, "sp_swap", 0); set_plain(a, "sp_mode", 0); set_plain(a, "sp_group", 0); set_plain(a, "grp_a_mute", 0); run(a, 40);
 
     /* 3. the kit's pattern from MPC's transport */
     set_plain(a, "seq_run", 1);

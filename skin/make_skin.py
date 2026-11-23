@@ -257,7 +257,8 @@ QLINKS = {
     "MACROS":     ["macro_amount", "macro_group", "macro_latch", "-",
                    "macro_destroy", "macro_mangle", "macro_rewind", "macro_darken",
                    "macro_tapestop", "macro_dive", "macro_roll", "macro_scifi"],
-    "SETUP":      ["pad", "note_base", "pad_follow", "swap_rehit"],
+    "SETUP":      ["pad", "note_base", "pad_follow", "swap_rehit",
+                   "swap_stopped"],
 }
 
 # =================================================================================================
@@ -271,6 +272,7 @@ class Tab:
         self.controls = []
         self.when = None          # added to every control from now on (MPC shows it only then)
         self.overlays = []        # (art file, when): full-page pictures over the background
+        self.preview_overlays = []   # (art file, when): placed in-line (overlay_art), previewed like overlays
         self.hi = enamel(W * SS, H * SS, seed, base=STEEL_DARK, grime=0.6).convert("RGBA")
         self.draw = ImageDraw.Draw(self.hi)
         self.header()
@@ -681,11 +683,17 @@ def render(tab, out):
         out.lines.append("art file=art/%s.png x=0 y=%d w=%d h=%d fit=stretch when=%s" % (name, Y_OFF, W, H, when))
     for c in tab.controls:
         n0 = len(out.lines)
+        if c["kind"] == "overlay_art":
+            # a full-page picture over everything before it (key pictures too, which can't hide): MPC stacks the
+            # skin's mode images in layout order, so this one, later, covers them while its mode is on
+            out.lines.append("art file=art/%s.png x=0 y=%d w=%d h=%d fit=stretch when=%s" % (c["name"], Y_OFF, W, H, c["when"]))
+            continue
         hidden = c.get("when", "").endswith(":1")   # shown only in a state the preview isn't in
         render_control(tab, c, out, slug, prev if not hidden else prev.copy())
         if c.get("when"):
-            assert c["kind"] != "keys", "keys are pictures: they can't have when= (use a toggle)"
             for i in range(n0, len(out.lines)):
+                if c["kind"] == "keys" and out.lines[i].startswith("picture "):
+                    continue   # key pictures follow their own parameter; their touch row (enum_h) hides
                 out.lines[i] += " when=" + c["when"]
     for title, keys in tab.qlinks:
         keys = QLINKS.get(tab.name, keys)
@@ -695,7 +703,7 @@ def render(tab, out):
     if tab.name == "SLICE":
         demo_wave(prev, out)
     prev.convert("RGB").save(os.path.join(PREVIEW, slug + ".png"))
-    for name, when in tab.overlays:
+    for name, when in tab.overlays + tab.preview_overlays:
         ov = OVERLAY_TABS[name]
         ovprev = final(ov.hi, W, H).convert("RGBA")
         for c in ov.controls:
@@ -904,6 +912,36 @@ def kit_naming_overlay(kit):
         kit.controls.append(c)
 
 
+def browser_overlay(page, x_cover):
+    """1.9: the sample browser over PAD / STEPS, opened by a tap on PAD / SAMPLE (smp_show), shown while
+    smp_browse is On. MPC can't be sent to another tab, so the browser comes to the page. The data wheel on SCROLL
+    moves the selection; its push opens a folder or loads the file (vst/skin_post.py)."""
+    o = Tab(page.name, [], 1300 + len(OVERLAY_TABS))
+    o.panel(14, 64, 900, 550, "LOAD A SAMPLE ONTO THE PAD")
+    o.readout("smp_path", 600, 106, 600, 36, tsize=20, talign="left")
+    o.touch_list("smp_r", 26, 136, 876, 8, 46, 4)
+    o.readout("smp_info", 464, 572, 860, 32, tsize=18)
+    o.panel(926, 64, 340, 550, "WHEEL")
+    o.readout("pad", 1096, 126, 300, 48, tsize=24, name="ONTO PAD")
+    o.knob("smp_file", 1012, 238, 40, "SCROLL", value=False)
+    o.tag(1170, 236, ["TURN THE WHEEL", "TO MOVE.", "PRESS IT TO OPEN", "OR LOAD."], 150, 92)
+    o.button("smp_home", 1012, 340, "PLACES", w=150, h=58, label_size=16)
+    o.button("smp_back", 1176, 340, "◀ BACK", w=150, h=58, label_size=16)
+    o.button("smp_pgup", 1012, 408, "▲ PAGE", w=150, h=58, label_size=16)
+    o.button("smp_pgdn", 1176, 408, "▼ PAGE", w=150, h=58, label_size=16)
+    o.button("smp_load", 1012, 492, "LOAD", w=150, h=84, label_size=26)
+    o.toggle("smp_slice", 1176, 492, "SLICE\nON LOAD", w=150, h=84)
+    o.button("smp_hide", 1096, 576, "CLOSE", w=318, h=48, label_size=20)
+    name = "browser_overlay_" + page.name.lower().replace(" ", "")
+    o.hi_final = final(o.hi, W, H)
+    o.hi_final.save(os.path.join(ART, name + ".png"), optimize=True)
+    OVERLAY_TABS[name] = o
+    page.controls.append(dict(kind="overlay_art", name=name, when="smp_browse:1"))
+    page.preview_overlays.append((name, "smp_browse:1"))
+    for c in o.controls:
+        page.controls.append(dict(c, src=o, when="smp_browse:1"))
+
+
 def tab_kit():
     t = Tab("KIT", [("KIT", ["kit", "kit_load", "kit_prev", "kit_next", "kit_save", "kit_saveas", "master_gain", "master_limiter", "scene_view",
                              "xfade", "xfade_curve"])], 101)
@@ -939,8 +977,10 @@ def tab_pad():
             "sp_mode", "sp_stretch", "sp_char", "sp_reverse", "sp_choke", "sp_swap", "sp_swapq", "sp_group"]
     t = Tab("PAD", [("PAD", keys)], 202)
     t.panel(14, 64, 420, 228, "SELECTED PAD")
+    t.when = "smp_browse:0"   # all of it hides while the browser is up
     t.knob("pad", 96, 186, 40, "PAD", value=False)
-    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE")
+    t.readout("pad", 292, 176, 238, 56, tsize=24, name="PAD  /  SAMPLE  (TAP: LOAD)")
+    t.hit("smp_show", 292, 176, 238, 56)
     t.panel(446, 64, 820, 228, "SOUND")
     for i, (k, n) in enumerate([("sp_gain", "GAIN"), ("sp_pitch", "PITCH"), ("sp_pan", "PAN"),
                                 ("sp_start", "START"), ("sp_end", "END"), ("sp_velsens", "VELOCITY")]):
@@ -957,6 +997,8 @@ def tab_pad():
     t.keys("sp_swap", 540, 556, ["OFF", "1", "2", "3", "4"], 60, 50, name="SWAP GROUP")
     t.keys("sp_swapq", 900, 556, ["SLICE", "1/16", "BEAT", "BAR"], 76, 50, name="SWAP AT", label_size=14)
     t.toggle("sp_sync", 1170, 556, "SYNC", w=150, h=56, name="TEMPO SYNC")
+    t.when = None
+    browser_overlay(t, None)
     return t
 
 
@@ -1162,20 +1204,22 @@ def tab_samples():
     t.toggle("smp_audition", 82, 166 + 5 * 74, "AUDITION", w=112, h=64, label_size=14)
     t.panel(906, 64, 360, 550, "LOAD ONTO THE PAD")
     t.knob("pad", 1000, 176, 38, "PAD", value=False)
-    t.knob("smp_file", 1172, 176, 38, "SCROLL", value=False)
+    t.knob("smp_file", 1172, 176, 38, "SCROLL", value=False)   # the data wheel's target: its push opens / loads
     t.readout("pad", 1086, 262, 320, 44, tsize=22)
     t.button("smp_load", 1086, 352, "LOAD", w=300, h=80, label_size=26)
     t.toggle("smp_slice", 1008, 454, "SLICE\nON LOAD", w=144, h=72)
     t.button("smp_clear", 1164, 454, "CLEAR\nPAD", w=144, h=72)
-    t.tag(1086, 556, ["TAP A FOLDER TO OPEN IT.", "TAP A FILE TO HEAR IT, THEN LOAD.", "PLACES: MPC SAMPLES, DRIVES, RECENT."], 300, 64)
+    t.tag(1086, 556, ["TOUCH SCROLL, THEN TURN THE WHEEL;", "PRESS IT: OPEN THE FOLDER / LOAD.", "OR TAP A FOLDER / A FILE."], 300, 64)
     return t
 
 
 def tab_steps():
     t = Tab("STEPS", [("STEPS", ["pad", "seq_length", "seq_res", "seq_run", "st_clear"])], 909)
     t.panel(14, 64, 1252, 196, "LANE")
+    t.when = "smp_browse:0"
     t.knob("pad", 90, 170, 38, "PAD", value=False)
-    t.readout("pad", 280, 162, 230, 52, tsize=24, name="PAD  /  SAMPLE")
+    t.readout("pad", 280, 162, 230, 52, tsize=24, name="PAD  /  SAMPLE  (TAP: LOAD)")
+    t.hit("smp_show", 280, 162, 230, 52)
     t.knob("seq_length", 520, 162, 36, "LENGTH", bw=110)
     t.keys("seq_res", 730, 176, ["1/8", "1/16", "1/32"], 70, 56, name="STEP")
     t.toggle("seq_run", 940, 176, "RUN", w=130, h=60, name="SEQUENCER")
@@ -1189,19 +1233,22 @@ def tab_steps():
         for i in range(16):
             n = row * 16 + i + 1
             t.toggle("st_%02d" % n, int(640 - pitch * 7.5 + i * pitch), cy_keys, str(n), w=70, h=84, label_size=19)
+    t.when = None
+    browser_overlay(t, None)
     return t
 
 
 def tab_setup():
-    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn", "pad_follow", "swap_rehit"])], 1010)
+    t = Tab("SETUP", [("SETUP", ["pad", "note_base", "note_learn", "pad_follow", "swap_rehit", "swap_stopped"])], 1010)
     t.panel(14, 64, 1252, 270, "PAD NOTES")
     t.knob("pad", 104, 196, 40, "PAD", value=False)
     t.keys("note_base", 540, 206, ["36-51\nC1", "37-52\nMPC", "48-63\nC2", "CUSTOM"], 150, 84, name="WHICH NOTES PLAY PADS 1-16")
     t.button("note_learn", 1060, 206, "LEARN\nPAD NOTE", w=230, h=90, name="SELECTED PAD")
     t.panel(14, 344, 1252, 270, "MIDI IN")
     t.readout("note_info", 640, 430, 1100, 64, tsize=30)
-    t.tag(330, 548, ["HIT A PAD: THIS SHOWS THE NOTE IT SENDS AND THE PAD IT PLAYS.",
-                     "WRONG PAD? TRY ANOTHER LAYOUT, OR PICK A PAD, PRESS LEARN, HIT IT."], 590, 56)
+    t.tag(228, 546, ["HIT A PAD: THIS SHOWS THE NOTE", "IT SENDS AND THE PAD IT PLAYS.",
+                     "WRONG PAD? TRY ANOTHER LAYOUT,", "OR PICK A PAD, LEARN, HIT IT."], 330, 84)
+    t.keys("swap_stopped", 548, 560, ["LATCH", "WHILE\nHELD"], 120, 56, name="SWAP, MPC STOPPED", label_size=15)
     t.keys("swap_rehit", 860, 560, ["IGNORE", "STOP"], 110, 56, name="HIT A PLAYING SWAP PAD AGAIN", label_size=15)
     t.toggle("pad_follow", 1140, 548, "FOLLOW\nHITS", w=180, h=76, name="PAD SELECT")
     return t

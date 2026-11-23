@@ -296,5 +296,14 @@ section("Mangle", [
     opts("mg_pads", "Pads Paint Steps", ONOFF, 0),
 ])
 
+# ---- 1.9: the data wheel in the browser, the browser over PAD / STEPS, SWAP with the MPC stopped -----------------
+section("Browser 3", [
+    trig("smp_enter", "Open / Load"),            # the data wheel's push on the SCROLL knob (skin_post.py)
+    opts("smp_browse", "Browser Open", ONOFF, 0),   # the browser shown over PAD / STEPS (not saved: the host's)
+    trig("smp_show", "Open Browser"),            # a tap on PAD / SAMPLE
+    trig("smp_hide", "Close Browser"),
+    opts("swap_stopped", "SWAP With MPC Stopped", ["Latch", "While Held"], 0),
+])
+
 json.dump({"name": "Twisted Breaks", "params": params, "sections": sections}, open(OUT, "w"), indent=1)
 print("%s: %d parameters" % (os.path.relpath(OUT), len(params)))

@@ -198,7 +198,7 @@ namespace
 
     enum class Own : uint8_t
     {
-        none, trigger, mgBrush, mgJoin, mgTap, mgCell, mgPreset, mgPads, slView, slSnap, listRow, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
+        none, trigger, mgBrush, mgJoin, mgTap, mgCell, mgPreset, mgPads, slView, slSnap, listRow, fxLit, fxSel, fxOn, fxMode, fxP, padFollow, swapRehit, slTap, kitNaming, kitKey, smpFile, smpSlice, smpAudition, smpBrowse, swapStopped, stPos, noteBase, step, slPos, slZoom, wvTap, wave, tab
     };
 
     struct Info
@@ -260,6 +260,8 @@ namespace
                 else if (std::strcmp (k, "fx_mode") == 0)      own (Own::fxMode);
                 else if (startsWith (k, "fx_p") && std::isdigit ((unsigned char) k[4])) own (Own::fxP, std::atoi (k + 4) - 1);
                 else if (std::strcmp (k, "swap_rehit") == 0)   own (Own::swapRehit);
+                else if (std::strcmp (k, "swap_stopped") == 0) own (Own::swapStopped);
+                else if (std::strcmp (k, "smp_browse") == 0)   own (Own::smpBrowse);
                 else if (std::strcmp (k, "sl_tap") == 0)       own (Own::slTap);
                 else if (std::strcmp (k, "kit_naming") == 0)   own (Own::kitNaming);
                 else if (std::strcmp (k, "kit_key") == 0)      own (Own::kitKey);
@@ -364,6 +366,7 @@ namespace
             if (len <= 0 || len > 3) return;
             if (len == 3 && mangleNote (msg)) return;
             if (len == 3 && dropRehit (msg)) return;
+            if (len == 3 && latchSwapOff (msg)) return;
             midi.addEvent (msg, len, 0);
             // A pad hit selects that pad, so every page shows the pad just played (not while LEARN waits for a note).
             if (len == 3 && (msg[0] & 0xf0) == 0x90 && msg[2] > 0 && padFollow.load (std::memory_order_relaxed))
@@ -432,6 +435,24 @@ namespace
             return true;
         }
 
+        /** SWAP WITH THE MPC STOPPED = LATCH. With the host stopped Twisted Breaks plays SWAP pads only while
+            held (in Live you jam with Live running). On the MPC you jam with it stopped: the note-off of a pad in a
+            SWAP group is held back, so it latches as it does while the MPC plays. Hit another pad of the group and
+            it takes over at the next slice point, carrying on from the same place in its own break; hit the
+            playing one again and it stops there (with the MPC stopped there is no STOP to end it, so IGNORE
+            doesn't apply then). */
+        bool latchSwapOff (const uint8_t* msg)
+        {
+            const int status = msg[0] & 0xf0, note = msg[1] & 0x7f;
+            const bool off = status == 0x80 || (status == 0x90 && msg[2] == 0);
+            if (! off || (playing && hasPosition) || ! swapLatch.load (std::memory_order_relaxed)) return false;
+            auto& engine = proc->getEngine();
+            if (engine.getNoteLearnPad() >= 0) return false;
+            const int pad = engine.padForNote (note);
+            if (pad < 0 || swapRaw[(size_t) pad] == nullptr) return false;
+            return juce::roundToInt (swapRaw[(size_t) pad]->load (std::memory_order_relaxed)) > 0;
+        }
+
         /** SWAP RE-HIT = IGNORE: a hit on the pad its SWAP group is playing does nothing (the engine would stop it at
             the next swap point); its note-off goes too. A hit while a hand-off to another pad is queued still reaches
             the engine, which cancels that hand-off (the loop plays on). Audio thread, lock-free. */
@@ -445,6 +466,7 @@ namespace
                 return true;
             }
             if (status != 0x90 || ! swapIgnore.load (std::memory_order_relaxed)) return false;
+            if (! (playing && hasPosition) && swapLatch.load (std::memory_order_relaxed)) return false;   // stopped + latched: a re-hit stops it
             auto& engine = proc->getEngine();
             if (engine.getNoteLearnPad() >= 0) return false;
             const int pad = engine.padForNote (note);
@@ -1559,6 +1581,8 @@ namespace
                 case Own::fxMode:      return (proc->getEngine().getFxLockedMask() >> fxSel.load()) & 1u ? 1.0f : 0.0f;
                 case Own::fxP:         { auto* p = fxSetting (in.sub); return p != nullptr ? p->getValue() : 0.0f; }
                 case Own::swapRehit:   return swapIgnore.load() ? 0.0f : 1.0f;
+                case Own::swapStopped: return swapLatch.load() ? 0.0f : 1.0f;
+                case Own::smpBrowse:   return smpBrowse.load() ? 1.0f : 0.0f;
                 case Own::slTap:       return (float) slTapMode.load();
                 case Own::kitNaming:   return kitNaming.load() ? 1.0f : 0.0f;
                 case Own::kitKey:      return (float) kNumKeys;
@@ -1623,6 +1647,8 @@ namespace
                     if (auto* p = fxSetting (in.sub)) p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
                     return;
                 case Own::swapRehit:   swapIgnore.store (v < 0.5f); return;
+                case Own::swapStopped: swapLatch.store (v < 0.5f); return;
+                case Own::smpBrowse:   smpBrowse.store (v > 0.5f); return;
                 case Own::slTap:       slTapMode.store (juce::jlimit (0, 3, juce::roundToInt (v))); juce::MessageManager::callAsync ([this] { refreshInfo(); }); return;
                 case Own::kitNaming:
                     if (v > 0.5f) openNaming(); else kitNaming.store (false);
@@ -1701,13 +1727,16 @@ namespace
 
             if (! press) return;
             if (startsWith (key, "sl_"))                       slicerAction (key, pad);
-            else if (std::strcmp (key, "smp_load") == 0)       loadSelected (pad);
+            else if (std::strcmp (key, "smp_load") == 0)       { if (loadSelected (pad)) showBrowser (false); }
             else if (std::strcmp (key, "smp_open") == 0)       openSelected (true);
             else if (std::strcmp (key, "smp_back") == 0)       goBack();
             else if (std::strcmp (key, "smp_pgup") == 0)       moveCursor (-kList, true);
             else if (std::strcmp (key, "smp_pgdn") == 0)       moveCursor (kList, true);
             else if (std::strcmp (key, "smp_home") == 0)       browse ({}, true, {});
             else if (std::strcmp (key, "smp_play") == 0)       previewSelected();
+            else if (std::strcmp (key, "smp_enter") == 0)      enterSelected (pad);
+            else if (std::strcmp (key, "smp_show") == 0)       showBrowser (true);
+            else if (std::strcmp (key, "smp_hide") == 0)       showBrowser (false);
             else if (startsWith (key, "smp_row"))
             {
                 const int row = std::atoi (key + 7) - 1;   // 0..6; the middle one is the selection
@@ -2022,11 +2051,30 @@ namespace
             lastDriveScan = juce::Time::getMillisecondCounter();
         }
 
-        void loadSelected (int pad)
+        /** The data wheel's push (on the SCROLL knob): a folder or place opens, a file loads onto the pad
+            (and the browser over PAD / STEPS closes, its job done). */
+        void enterSelected (int pad)
         {
             const auto e = selectedEntry();
-            if (e.file == juce::File()) { setStatus ("NOTHING SELECTED"); return; }
+            if (e.file == juce::File()) return;
             if (e.dir) { browse (e.file, false, {}); return; }
+            if (loadSelected (pad)) showBrowser (false);
+        }
+
+        /** The browser over PAD / STEPS (a tap on PAD / SAMPLE opens it). */
+        void showBrowser (bool on)
+        {
+            if (smpBrowse.exchange (on) == on) return;
+            markChanged ("smp_browse");
+            if (on) setStatus ("PICK A SAMPLE FOR PAD " + tb::padLabel (selectedPad.load()) + ": WHEEL TO MOVE, PRESS TO OPEN / LOAD");
+        }
+
+        /** true: a file is on its way to the pad (false: nothing, or a folder that opened instead). */
+        bool loadSelected (int pad)
+        {
+            const auto e = selectedEntry();
+            if (e.file == juce::File()) { setStatus ("NOTHING SELECTED"); return false; }
+            if (e.dir) { browse (e.file, false, {}); return false; }
             const bool slice = smpSliceOnLoad.load();
             stopPreview();
             juce::MessageManager::callAsync ([this, pad, file = e.file, slice]
@@ -2037,6 +2085,7 @@ namespace
                            + (slice ? ", SLICING" : ""));
             });
             pool.addJob ([this, dir = e.file.getParentDirectory()] { rememberFolder (dir); });
+            return true;
         }
 
         void previewSelected()
@@ -2470,6 +2519,8 @@ namespace
         }
         std::array<bool, 128> droppedNote {};          // audio thread only
         std::atomic<bool> swapIgnore { true };
+        std::atomic<bool> swapLatch { true };     // SWAP pads latch with the MPC stopped too (swap_stopped)
+        std::atomic<bool> smpBrowse { false };    // the browser over PAD / STEPS
 
         juce::AudioBuffer<float> buffer;
         juce::MidiBuffer midi;

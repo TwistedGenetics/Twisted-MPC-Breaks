@@ -41,11 +41,11 @@ has both, and MPC picks the right one.
 | Page | What's on it |
 |---|---|
 | KIT | Kit knob (one click = one kit, wraps round), ◀ PREV / NEXT ▶ (load straight away), LOAD KIT, SAVE (over the loaded kit when it is one of yours; a factory kit asks for a name), SAVE AS (a keyboard to name it), what's playing; status; **what shapes the sound** (pads following the MPC tempo, FX, macros, character, limiter); master level, limiter, scene A/B, crossfader |
-| PAD | The selected pad: gain, pitch, pan, start/end, velocity, mode, stretch, **tempo sync**, character, slice, reverse, choke, SWAP, group, and a line saying how it plays (e.g. "LOOP · FOLLOWS MPC TEMPO: 170 -> 120 BPM, REPITCH") |
-| SAMPLES | A touch list: PLACES first (MPC Samples, MPC Documents, Expansions, the internal drive as MPC shows it, SD and USB drives, RECENT folders, the plugin's folders). Tap a folder to open it, tap a file to hear it (again to replay), PAGE ▲ ▼, BACK; LOAD puts it on the selected pad (sliced if SLICE ON LOAD is lit) |
+| PAD | The selected pad: gain, pitch, pan, start/end, velocity, mode, stretch, **tempo sync**, character, slice, reverse, choke, SWAP, group, and a line saying how it plays (e.g. "LOOP · FOLLOWS MPC TEMPO: 170 -> 120 BPM, REPITCH"). **Tap PAD / SAMPLE** and the sample browser opens over the page, for the selected pad |
+| SAMPLES | A touch list: PLACES first (MPC Samples, MPC Documents, Expansions, the internal drive as MPC shows it, SD and USB drives, RECENT folders, the plugin's folders). Tap a folder to open it, tap a file to hear it (again to replay), PAGE ▲ ▼, BACK; LOAD puts it on the selected pad (sliced if SLICE ON LOAD is lit). **The data wheel**: touch SCROLL, turn the wheel to move through the list, press it to open the folder or load the file |
 | SLICE | Chopping on the green CRT: ZOOM (all, slice, 400 / 100 / 25 ms around the marker: at 25 ms one column is 0.4 ms), NUDGE ◀◀ ◀ ▶ ▶▶ (one or eight columns), TIGHTEN (the marker onto the start of its hit, at a zero crossing) and TIGHTEN ALL, MOVE knob (spans what the screen shows), SNAP TAPS TO off / zero / hit, FINGER ON THE WAVE pick / move / add / delete, ADD, DELETE, PLAY |
 | AUTO SLICE | Sensitivity, count, AUTO SLICE, EQUAL, RESET, UNSLICE, SPREAD onto pads |
-| STEPS | The selected pad's 32 steps as lamp keys, with a running playhead; length, step size, run, CLEAR |
+| STEPS | The selected pad's 32 steps as lamp keys, with a running playhead; length, step size, run, CLEAR; tap PAD / SAMPLE to load a sample |
 | SEQUENCER | Run, length, step size, fill, MUTATE + amount, snapshot recall, break bank |
 | FX | FX group A–D and its 16 performance effects; a red lamp over each lights while it is on (from a key, a pad held, or latched) |
 | FX EDIT | Pick an effect: its settings (e.g. LPF cutoff / res / drive) on three knobs, KEY MODE (HOLD: on while the pad is held; LATCH: a hit turns it on, the next off), EFFECT ON, the group |
@@ -53,7 +53,7 @@ has both, and MPC picks the right one.
 | MANGLE FX | TEXTURE (tight, scatter, cloud, reverse grains: amount, size, density, scatter, LOCK) and SPACE (echo, ping-pong, diffuse: time, feedback, amount, LOCK); what it mangles (master or a group), MIX, AMOUNT, FILL EVERY 2–16 bars, a bar or half; presets (the 16 factory ones and your own: SAVE writes "MPC MANGLE 001"…, `.tbmangle` files the Mac also reads); **PADS PAINT STEPS** |
 | MACROS | The 8 macros (Destroy, Amen Mangle, Rewind, Darken, Tape Stop, Pitch Dive, Jungle Roll, Sci-Fi), amount, group, latch |
 | MIXER | Group A–D levels and mutes |
-| SETUP | FOLLOW HITS (a hit selects its pad); hitting a playing SWAP pad again: IGNORE (default) or STOP; which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
+| SETUP | FOLLOW HITS (a hit selects its pad); hitting a playing SWAP pad again: IGNORE (default) or STOP; SWAP pads with the MPC stopped: LATCH (default) or WHILE HELD; which MIDI notes play pads 1–16 (36–51, 37–52, 48–63 or custom), LEARN a note for one pad, and a MIDI IN line showing the note you just hit and the pad it played |
 
 (The MPC shows five page tabs at a time; the `>` tab pages to the rest.)
 
@@ -69,8 +69,12 @@ has both, and MPC picks the right one.
 ### More
 - **The pad you hit is the pad you edit**: hitting a pad selects it, so PAD, SLICE, STEPS and SAMPLES all switch to
   it (the sequencer playing doesn't move the selection). Turn it off with FOLLOW HITS on the SETUP page.
-- **SWAP groups**: with the MPC playing, hitting the pad that is playing again does nothing (IGNORE); a hit while
-  a hand-off to another pad is waiting cancels the hand-off. With the MPC stopped, loops play only while held.
+- **SWAP groups** (break on pad 01, another break on pad 02, both in SWAP group 1): hit pad 01, then hit pad 02 as the
+  snare lands: pad 02's break takes over at the next slice point, carrying on from the same place in its own break
+  (not from its start). With the MPC playing, hitting the pad that is playing again does nothing (IGNORE); a hit while
+  a hand-off is waiting cancels it. With the MPC stopped, SWAP pads latch too (1.9; Twisted Breaks in Live plays them
+  only while held when Live is stopped): a hit starts one, another pad takes over, the playing one hit again stops at
+  the next point. SETUP > WITH MPC STOPPED: WHILE HELD brings the old way back.
 - **Tight chops**: AUTO SLICE, then on SLICE pick a slice, ZOOM 25 ms, NUDGE until it sits right (each nudge plays the
   slice), or TIGHTEN to put it on the start of its hit. TIGHTEN ALL does every marker. The MPC's screen sends a drag
   as small nudges, not a position, so a marker is moved by nudges, the MOVE knob, or a tap in MOVE mode.
@@ -144,7 +148,9 @@ and publishes release [`toolchain-az01-g1-3.10`](../../releases/tag/toolchain-az
 Locally (Linux): `git submodule update --init`, then
 `cmake -B build -G Ninja && cmake --build build && build/tbm_test && build/toolkit_host_test`.
 
-## Known limits (1.8)
+## Known limits (1.9)
+- A plugin can't switch the MPC's page tabs, so PAD / SAMPLE opens the browser over the page you're on rather than
+  going to SAMPLES. The wheel's push and the browser over a page are new in 1.9 and not yet tried on a device.
 - The MPC's own pad lights can't be set by a plugin (MPC drives them); see the FX page's lamps instead.
 - MANGLE's TEXTURE (grains) and SPACE add CPU on top of the break: check the MPC's CPU meter with CLOUD at high
   density before relying on it live.

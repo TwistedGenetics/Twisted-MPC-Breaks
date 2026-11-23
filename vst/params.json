@@ -3637,6 +3637,54 @@
     "On"
    ],
    "default": 0
+  },
+  {
+   "key": "smp_enter",
+   "name": "Open / Load",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_browse",
+   "name": "Browser Open",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "smp_show",
+   "name": "Open Browser",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "smp_hide",
+   "name": "Close Browser",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0,
+   "momentary": true
+  },
+  {
+   "key": "swap_stopped",
+   "name": "SWAP With MPC Stopped",
+   "options": [
+    "Latch",
+    "While Held"
+   ],
+   "default": 0
   }
  ],
  "sections": [
@@ -4124,6 +4172,16 @@
     "mg_load",
     "mg_save",
     "mg_pads"
+   ]
+  },
+  {
+   "label": "Browser 3",
+   "keys": [
+    "smp_enter",
+    "smp_browse",
+    "smp_show",
+    "smp_hide",
+    "swap_stopped"
    ]
   }
  ]

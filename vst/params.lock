@@ -389,3 +389,8 @@ mg_preset
 mg_load
 mg_save
 mg_pads
+smp_enter
+smp_browse
+smp_show
+smp_hide
+swap_stopped
