@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Screenshots for the manual, from a release's skin preview (TwistedBreaks-MPC-skin-preview.zip, unzipped).
 
-    python3 docs/manual/prep_images.py <unzipped preview folder> <out folder>
+    python3 docs/manual/prep_images.py <unzipped preview folder> <out folder> [index of smp_browse]
 
 page_0..13.png are the tabs in skin/make_skin.py's order. The MANGLE page gets a demo bar painted from
 vst/art/mangle_cell.png, since the renderer shows whichever frame it picks.
@@ -26,4 +26,9 @@ for i, n in enumerate(NAMES):
         for s, f in enumerate(demo):
             im.paste(cells.crop((0, f * h, w, f * h + h)), (47 + s * 70, 163))
     im.save(os.path.join(out, n + ".jpg"), quality=88)
+# the browser over PAD (1.9): the PAD page in its smp_browse mode, if the preview has it (page_1_mode<N>-1.png of the
+# smp_browse parameter); else the script's own preview of the overlay
+over = [f for f in os.listdir(src) if f.startswith("page_1_mode%d-" % int(sys.argv[3])) ] if len(sys.argv) > 3 else []
+alt = os.path.join(HERE, "..", "..", "skin", "preview", "pad_browser_overlay_pad.png")
+Image.open(os.path.join(src, sorted(over)[0]) if over else alt).convert("RGB").save(os.path.join(out, "padbrowser.jpg"), quality=88)
 print("ok")

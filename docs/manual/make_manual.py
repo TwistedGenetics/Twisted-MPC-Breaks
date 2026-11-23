@@ -229,6 +229,8 @@ S += [P("Touching and turning", h2),
         "button</b> steps through columns of four, and MPC outlines the column the knobs are driving. One-press "
         "buttons (LOAD, HOME, AUTO SLICE…) are kept off the Q-Links so a knob turned by accident can't fire them."),
       B("<b>Keys</b> (the rows of lamp buttons) light their amber lamp when that setting is chosen."),
+      B("<b>The data wheel in the browser</b>: touch <b>SCROLL</b> (it gets the amber frame), then turn the wheel to "
+        "move through the list and <b>press the wheel</b> to open the folder or load the file onto the pad."),
       B("<b>Readouts</b> (the dark windows) show names, values and status lines. The KIT page's status line says what "
         "the plugin just did (loaded, saved, failed and why)."),
       B("<b>On a Live III or XL</b> one tap on the screen can reach a plugin twice. Twisted Breaks counts it once: "
@@ -286,6 +288,7 @@ S += [PageBreak(), P("PAD", h2)] + shot("pad") + [
     P("Everything on this page applies to the <b>selected pad</b> (the PAD knob, or the last pad you hit). A line at "
       "the bottom says how the pad plays, e.g. <i>LOOP · FOLLOWS MPC TEMPO: 170 -&gt; 120 BPM, REPITCH</i>.")] + controls([
     ("PAD", "Which pad you are editing (1–32)."),
+    ("PAD / SAMPLE (tap)", "Opens the sample browser over the page, for this pad (below). STEPS has the same."),
     ("GAIN, PITCH, PAN", "Level (−48 to +12 dB), pitch (±12 semitones), pan."),
     ("START, END", "Where in the sample the pad starts and stops."),
     ("VELOCITY", "How much hit strength changes the level."),
@@ -305,10 +308,16 @@ S += [PageBreak(), P("SAMPLES", h2)] + shot("samples") + [
     ("Tap a file", "Plays it (tap again to replay). WAV, AIFF and FLAC are listed."),
     ("PAGE ▲ / ▼, HOME", "Scroll a page at a time; back to the top."),
     ("BACK", "Up one folder. On PLACES, BACK looks again for drives (a stick you just plugged in)."),
+    ("SCROLL + data wheel", "Touch SCROLL, turn the wheel to move, press the wheel: a folder opens, a file loads onto the pad."),
     ("LOAD", "Puts the highlighted file on the selected pad."),
     ("SLICE ON LOAD", "When lit, a loaded sample is auto-sliced straight away."),
     ("CLEAR PAD", "Empties the selected pad."),
 ])
+S += box("The browser over PAD and STEPS", [
+    "Tap the <b>PAD / SAMPLE</b> window on PAD or STEPS and the same browser opens over the page, for the selected pad: "
+    "the list, SCROLL (the wheel), PLACES, BACK, PAGE, LOAD, SLICE ON LOAD and CLOSE. Loading a file closes it. "
+    "(A plugin can't send the MPC to another page tab, so the browser comes to you.)"])
+S += shot("padbrowser", "The browser over the PAD page.")
 S += box("Tip", "A project remembers where each pad's sample lives. Keep the card or stick in, or SAVE a kit: a kit carries its samples inside it.")
 
 S += [PageBreak(), P("SLICE", h2)] + shot("slice") + [
@@ -416,7 +425,8 @@ S += [PageBreak(), P("SETUP", h2)] + shot("setup") + controls([
     ("LEARN PAD NOTE", "Pick a pad, press LEARN, hit the MPC pad you want to play it."),
     ("MIDI IN", "The note you just hit and the pad it played."),
     ("FOLLOW HITS", "A hit selects its pad for editing (on by default)."),
-    ("HIT A PLAYING SWAP PAD AGAIN", "IGNORE (default): a second hit on a playing SWAP pad does nothing. STOP: it stops the pad."),
+    ("HIT A PLAYING SWAP PAD AGAIN", "IGNORE (default): with the MPC playing, a second hit on a playing SWAP pad does nothing. STOP: it stops the pad."),
+    ("SWAP, MPC STOPPED", "LATCH (default): SWAP pads latch with the MPC stopped too, so another pad of the group takes over from the same point, and the playing pad hit again stops. WHILE HELD: they play only while held (Twisted Breaks' rule in Live)."),
 ])
 
 # ---------------------------------------------------------------- 4 how to
@@ -429,10 +439,15 @@ S += [PageBreak(), P("4  How to…", h1),
       B("<b>SAVE</b> saves over the kit you loaded, if it is one of yours."),
       B("<b>SAVE AS</b> asks for a name with an on-screen keyboard and saves a new kit. Kits keep their samples inside them."),
       B("A factory kit can't be overwritten: SAVE asks for a name instead."),
-      P("SWAP groups", h2),
-      P("Pads in the same SWAP group hand over to each other at the SWAP AT point. With the MPC playing, hitting the "
-        "pad that is already playing does nothing (IGNORE on SETUP), so a stray double hit won't stop your loop; a hit "
-        "while a hand-off is waiting cancels it. With the MPC stopped, loops play only while held."),
+      P("SWAP groups: one break takes over from another", h2),
+      N(1, "Put a break on pad 01 and another on pad 02, both <b>LOOP</b>, both in <b>SWAP GROUP 1</b> (PAD page), "
+           "SWAP AT <b>SLICE</b>. Slice them (AUTO SLICE) so the hand-off lands on the hits."),
+      N(2, "Hit pad 01: the amen plays. Hit pad 02 as the snare lands: at the next slice point pad 02's break takes "
+           "over, <b>carrying on from the same place in its own break</b> – from its snare, not from its start."),
+      N(3, "Hit pad 01 again to swap back. Hit the playing pad to stop it."),
+      P("With the MPC playing, hitting the pad that is already playing does nothing (IGNORE on SETUP), so a stray "
+        "double hit won't stop your loop; a hit while a hand-off is waiting cancels it. With the MPC stopped SWAP pads "
+        "latch too (SETUP: SWAP, MPC STOPPED), and hitting the playing pad stops it."),
       P("Mangle a break", h2),
       N(1, "MANGLE: switch MANGLE ON and choose STEPS (8 is a good start)."),
       N(2, "Pick a move (REPEAT, say) and tap steps to paint it; JOIN for longer runs."),
@@ -481,6 +496,7 @@ S += [P("Known limits", h2),
       Spacer(1, 10),
       P("Version history", h2)]
 S += controls([
+    ("1.9", "The data wheel scrolls the browser and its press opens / loads; tapping PAD / SAMPLE opens the browser over PAD and STEPS; SWAP pads latch with the MPC stopped."),
     ("1.8", "Gen2 MPCs (Live III, XL, One G2, Key 37 G2); one folder for MPC OS 3.10.1's VST2 Plugins; a tap the Live III sends twice counts once."),
     ("1.7.1", "Q-Links reordered: continuous controls in the first column, one-press buttons off, the active column outlined."),
     ("1.7", "MANGLE from Twisted Breaks 0.30: MANGLE and MANGLE FX pages, presets, pads paint steps."),
